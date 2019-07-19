@@ -1,0 +1,8 @@
+.pioenvs/*
+!.pioenvs/yun
+.pioenvs/yun/*
+!.pioenvs/yun/firmware.hex
+.piolibdeps
+.vscode
+.travis.yml
+README
