@@ -176,11 +176,11 @@ void loop()
   //Start angefordert
   if (odroidStartRequested)
   {
-    Serial.print("[LOOP] Start-Timer: ");
+    //Serial.print("[LOOP] Start-Timer: ");
     //Abgelaufene Zeit messen
-    unsigned long passedTime = currentMillis - previousOdroidActionTime;
-    Serial.print(passedTime);
-    Serial.println("ms");
+    //unsigned long passedTime = currentMillis - previousOdroidActionTime;
+    //Serial.print(passedTime);
+    //Serial.println("ms");
     if (currentMillis - previousOdroidActionTime >= ODROID_BOOT_HOLD_DELAY)
     {
       odroidStartRequested = false;
