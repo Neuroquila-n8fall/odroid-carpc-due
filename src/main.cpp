@@ -60,7 +60,7 @@ bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
 
 bool startup = true; //Steuerung ist gerade angelaufen.
 
-bool ignitionOn = false;
+int ignitionOn = HIGH;                       //Zündung - HIGH = Aus, LOW = An
 
 const int ODROID_STANDBY_HOLD_DELAY = 100;          //Button Press für Display und Sleep.
 const unsigned long WAKEUP_WAIT_DELAY = 10000;      //10 Sekunden Wartezeit für Aufwecken
@@ -106,6 +106,8 @@ void checkCan();
 
 void setup()
 {
+  digitalWrite(LED_BUILTIN,LOW);
+
   Wire.begin(WIRE_ADDRESS); //I2C Initialisieren
   Serial.begin(115200);
   Keyboard.begin();
@@ -120,13 +122,14 @@ void setup()
   //So lange versuchen das modul zu initialisieren, bis es klappt.
   while (CAN_OK != CAN.begin(CAN_100KBPS))
   {
-    Serial.println("CAN BUS Shield init fail");
-    Serial.println(" Init CAN BUS Shield again");
+    Serial.println("[setup] CAN BUS Shield init fail");
+    Serial.println("[setup] Init CAN BUS Shield again");
     delay(100);
   }
-  Serial.println("CAN BUS Shield init ok!");
+  Serial.println("[setup] CAN BUS Shield init ok!");
 
-  //Masken und Filter setzen
+//Filter deaktiviert. Es sollte auf dem DUE genügend Power vorhanden sein um alles zu verarbeiten.
+/*   //Masken und Filter setzen
   // -1- 0111 1111 1111 -> Spezifizierte IDs filtern
   CAN.init_Mask(0, 0, 0x7FF);
   // -1.0- MFL Knöpfe
@@ -142,13 +145,14 @@ void setup()
   // -2.3- Rückwärtsgang
   CAN.init_Filt(4, 0, 0x3B0);
   // -2.4- Batteriespannung & Status Triebwerk
-  CAN.init_Filt(5, 0, 0x3B4);
+  CAN.init_Filt(5, 0, 0x3B4); */
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
   for (int i = 0; i <= 255; i++)
   {
     analogWrite(PIN_VU7A_BRIGHTNESS, i);
   }
+  digitalWrite(LED_BUILTIN,HIGH);
 }
 
 void loop()
@@ -160,9 +164,9 @@ void loop()
     //Wenn die Steuerung mit aktiver Zündung startet oder resettet, sollte der Odroid starten
     //Aber nur wenn der Odroid AUS ist aber die Zündung an und die Spannung über dem Schwellwert ist.
     //Wenn der Odroid im Sleep ist, ist odroidRunning ebenfalls Low. Auf diese Art wird er bei Zündung direkt aufgeweckt.
-    if (odroidRunning == LOW && odroidStartRequested == false)
+    if (odroidRunning == LOW && ignitionOn == LOW && odroidStartRequested == false)
     {
-      Serial.println(":[STARTUP] PC aus, Zündung an und Spannung über Grenzwert: Starte Pc...");
+      Serial.println("[STARTUP] PC aus, Zündung an --> Starte Pc...");
       startOdroid();
     }
     //Start beendet.
@@ -172,7 +176,7 @@ void loop()
   //Start angefordert
   if (odroidStartRequested)
   {
-    Serial.print(":[LOOP] Start-Timer: ");
+    Serial.print("[LOOP] Start-Timer: ");
     //Abgelaufene Zeit messen
     unsigned long passedTime = currentMillis - previousOdroidActionTime;
     Serial.print(passedTime);
@@ -184,7 +188,7 @@ void loop()
       previousOdroidActionTime = currentMillis;
       //Ausgang freigeben
       digitalWrite(PIN_ODROID_POWER_BUTTON, LOW);
-      Serial.println(":Start erfolgt.");
+      Serial.println("[odroidStartRequested] Start erfolgt.");
       //Aktuellen Counter merken. Ausführung weiterer Aktionen wird pausiert, bis abgewartet wurde.
       startPowerTransitionMillis = millis();
     }
@@ -192,7 +196,7 @@ void loop()
   //Stop angefordert
   if (odroidShutdownRequested)
   {
-    Serial.print(":[LOOP] Stop-Timer: ");
+    Serial.print("[odroidShutdownRequested] Stop-Timer: ");
     //Abgelaufene Zeit messen
     unsigned long passedTime = currentMillis - previousOdroidActionTime;
     Serial.print(passedTime);
@@ -204,7 +208,7 @@ void loop()
       previousOdroidActionTime = currentMillis;
       //Ausgang freigeben
       digitalWrite(PIN_ODROID_POWER_BUTTON, LOW);
-      Serial.println(":Stop erfolgt.");
+      Serial.println("[odroidShutdownRequested] Stop erfolgt.");
       //Aktuellen Counter merken. Ausführung weiterer Aktionen wird pausiert, bis abgewartet wurde.
       startPowerTransitionMillis = millis();
     }
@@ -215,7 +219,7 @@ void loop()
     if (currentMillis - previousOdroidPauseTime >= ODROID_STANDBY_DELAY)
     {
       odroidPauseRequested = false;
-      Serial.println(":Standby erfolgt.");
+      Serial.println("[odroidPauseRequested] Standby erfolgt.");
       //Aktuellen Counter merken. Ausführung weiterer Aktionen wird pausiert, bis abgewartet wurde.
       startPowerTransitionMillis = millis();
     }
@@ -239,21 +243,21 @@ void loop()
     case ODROID_STOP:
       if (currentMillis - startPowerTransitionMillis >= SHUTDOWN_WAIT_DELAY)
       {
-        Serial.println(":Shutdown Wartezeit abgelaufen");
+        Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
       }
       break;
     case ODROID_START:
       if (currentMillis - startPowerTransitionMillis >= STARTUP_WAIT_DELAY)
       {
-        Serial.println(":Start Wartezeit abgelaufen");
+        Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
       }
       break;
     case ODROID_STANDBY:
       if (currentMillis - startPowerTransitionMillis >= ODROID_STANDBY_DELAY)
       {
-        Serial.println(":Stand-by Wartezeit abgelaufen");
+        Serial.println("[LOOP] Stand-by Wartezeit abgelaufen");
         pendingAction = NONE;
       }
       break;
@@ -271,30 +275,37 @@ void checkCan()
   unsigned char buf[8];
   unsigned long currentMillis = millis();
 
-  if (CAN_MSGAVAIL == CAN.checkReceive()) // check if data coming
+  if (CAN_MSGAVAIL == CAN.checkReceive())
   {
-    CAN.readMsgBuf(&len, buf); // read data,  len: data length, buf: data buf
+    CAN.readMsgBuf(&len, buf);
 
     unsigned int canId = CAN.getCanId();
 
-    /*     Serial.print("CAN ID: ");
+    Serial.print("CAN ID: ");
     Serial.println(canId, HEX);
-    for (int i = 0; i < len; i++) // print the data
+    for (int i = 0; i < len; i++) 
     {
       Serial.print(buf[i], HEX);
       Serial.print("\t");
     }
-
-    Serial.println(); */
+    Serial.println();
 
     switch (canId)
     {
     //MFL Knöpfe
     case 0x1D6:
+      //Kein Knopf gedrückt (alle 100ms)
+      if (buf[0] == 0xC0 && buf[1] == 0x0C)
+      { 
 
+      }
       //Next
       if (buf[0] == 0xE0 && buf[1] == 0x0C)
-      {
+      { 
+        /*
+          Wenn der Knopf das erste Mal gedrückt wird, wird keine Aktion ausgeführt.
+          Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut kommt (Knopf losgelassen) wird reagiert.
+        */       
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
@@ -303,11 +314,11 @@ void checkCan()
           delay(200);
           Keyboard.releaseAll();
         }
-        lastMflPress = millis();
+        lastMflPress = currentMillis;
       }
       //Prev
       if (buf[0] == 0xD0 && buf[1] == 0x0C)
-      {
+      {        
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
@@ -484,12 +495,12 @@ void checkIgnitionState()
     //Zündung ist jetzt AUS
     if (ignitionOn == HIGH)
     {
-      Serial.println(":[checkIgnitionState] Zündung ist jetzt AUS");
+      Serial.println("[checkIgnitionState] Zündung ist jetzt AUS");
       stopOdroid();
     }
     else
     {
-      Serial.println(":[checkIgnitionState] Zündung ist jetzt AN --> Starten");
+      Serial.println("[checkIgnitionState] Zündung ist jetzt AN --> Starten");
       //Zündung ist jetzt AN
       startOdroid();
     }
@@ -510,7 +521,7 @@ void startOdroid()
   odroidStartRequested = true;
   pendingAction = ODROID_START;
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
-  Serial.println(":[startOdroid] Start angefordert.");
+  Serial.println("[startOdroid] Start angefordert.");
   previousOdroidActionTime = millis();
 }
 
@@ -525,7 +536,7 @@ void pauseOdroid()
   pendingAction = ODROID_STANDBY;
   digitalWrite(PIN_ODROID_DISPLAY_POWER_BUTTON, HIGH);
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
-  Serial.println(":[pauseOdroid] Stand-By angefordert");
+  Serial.println("[pauseOdroid] Stand-By angefordert");
   //Kurze Verzögerung - kurzer Tastendruck für display und Odroid
   delay(ODROID_STANDBY_HOLD_DELAY);
   digitalWrite(PIN_ODROID_DISPLAY_POWER_BUTTON, LOW);
@@ -547,7 +558,7 @@ void stopOdroid()
   pendingAction = ODROID_STOP;
 
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
-  Serial.println(":[stopOdroid] Herunterfahren angefordert");
+  Serial.println("[stopOdroid] Herunterfahren angefordert");
 
   previousOdroidActionTime = millis();
 }
