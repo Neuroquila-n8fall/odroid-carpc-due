@@ -225,6 +225,8 @@ void loop()
     }
   }
 
+  checkCan();
+
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
 
   //Allgemeine Funktionen. Nur ausführen, wenn Zyklus erreicht wurde und keine ausstehenden Aktionen laufen, die ein zeitkritisches Verändern der Ausgänge beinhalten.
