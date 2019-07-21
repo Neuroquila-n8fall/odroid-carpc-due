@@ -60,7 +60,7 @@ bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
 
 bool startup = true; //Steuerung ist gerade angelaufen.
 
-int ignitionOn = HIGH;                       //Zündung - HIGH = Aus, LOW = An
+int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
 
 const int ODROID_STANDBY_HOLD_DELAY = 100;          //Button Press für Display und Sleep.
 const unsigned long WAKEUP_WAIT_DELAY = 10000;      //10 Sekunden Wartezeit für Aufwecken
@@ -106,7 +106,7 @@ void checkCan();
 
 void setup()
 {
-  digitalWrite(LED_BUILTIN,LOW);
+  digitalWrite(LED_BUILTIN, LOW);
 
   Wire.begin(WIRE_ADDRESS); //I2C Initialisieren
   Serial.begin(115200);
@@ -114,7 +114,7 @@ void setup()
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
-  pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);           //Odroid 3.3v Line als Rückmeldung
+  pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid 3.3v Line als Rückmeldung
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
 
   pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT); //Display Helligkeitssteuerung
@@ -128,8 +128,8 @@ void setup()
   }
   Serial.println("[setup] CAN BUS Shield init ok!");
 
-//Filter deaktiviert. Es sollte auf dem DUE genügend Power vorhanden sein um alles zu verarbeiten.
-/*   //Masken und Filter setzen
+  //Filter deaktiviert. Es sollte auf dem DUE genügend Power vorhanden sein um alles zu verarbeiten.
+  /*   //Masken und Filter setzen
   // -1- 0111 1111 1111 -> Spezifizierte IDs filtern
   CAN.init_Mask(0, 0, 0x7FF);
   // -1.0- MFL Knöpfe
@@ -152,7 +152,7 @@ void setup()
   {
     analogWrite(PIN_VU7A_BRIGHTNESS, i);
   }
-  digitalWrite(LED_BUILTIN,HIGH);
+  digitalWrite(LED_BUILTIN, HIGH);
 }
 
 void loop()
@@ -162,7 +162,7 @@ void loop()
   if (startup)
   {
     //Wenn die Steuerung mit aktiver Zündung startet oder resettet, sollte der Odroid starten
-    //Aber nur wenn der Odroid AUS ist aber die Zündung an und die Spannung über dem Schwellwert ist.
+    //Aber nur wenn der Odroid AUS ist aber die Zündung an
     //Wenn der Odroid im Sleep ist, ist odroidRunning ebenfalls Low. Auf diese Art wird er bei Zündung direkt aufgeweckt.
     if (odroidRunning == LOW && ignitionOn == LOW && odroidStartRequested == false)
     {
@@ -176,11 +176,6 @@ void loop()
   //Start angefordert
   if (odroidStartRequested)
   {
-    //Serial.print("[LOOP] Start-Timer: ");
-    //Abgelaufene Zeit messen
-    //unsigned long passedTime = currentMillis - previousOdroidActionTime;
-    //Serial.print(passedTime);
-    //Serial.println("ms");
     if (currentMillis - previousOdroidActionTime >= ODROID_BOOT_HOLD_DELAY)
     {
       odroidStartRequested = false;
@@ -196,11 +191,6 @@ void loop()
   //Stop angefordert
   if (odroidShutdownRequested)
   {
-    Serial.print("[odroidShutdownRequested] Stop-Timer: ");
-    //Abgelaufene Zeit messen
-    unsigned long passedTime = currentMillis - previousOdroidActionTime;
-    Serial.print(passedTime);
-    Serial.println("ms");
     if (currentMillis - previousOdroidActionTime >= ODROID_SHUTDOWN_HOLD_DELAY)
     {
       odroidShutdownRequested = false;
@@ -225,6 +215,7 @@ void loop()
     }
   }
 
+  //CAN Nachrichten verarbeiten
   checkCan();
 
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
@@ -283,7 +274,7 @@ void checkCan()
 
     unsigned int canId = CAN.getCanId();
 
-/*     Serial.print("CAN ID: ");
+    /*     Serial.print("CAN ID: ");
     Serial.println(canId, HEX);
     for (int i = 0; i < len; i++) 
     {
@@ -298,16 +289,15 @@ void checkCan()
     case 0x1D6:
       //Kein Knopf gedrückt (alle 100ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
-      { 
-
+      {
       }
       //Next
       if (buf[0] == 0xE0 && buf[1] == 0x0C)
-      { 
+      {
         /*
           Wenn der Knopf das erste Mal gedrückt wird, wird keine Aktion ausgeführt.
           Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut kommt (Knopf losgelassen) wird reagiert.
-        */       
+        */
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
@@ -320,7 +310,7 @@ void checkCan()
       }
       //Prev
       if (buf[0] == 0xD0 && buf[1] == 0x0C)
-      {        
+      {
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
@@ -346,15 +336,6 @@ void checkCan()
       break;
     //CAS: Schlüssel Buttons
     case 0x23A:
-      Serial.println("CAS: Schlüssel event:");
-      Serial.print("CAN ID: ");
-    Serial.println(canId, HEX);
-    for (int i = 0; i < len; i++) 
-    {
-      Serial.print(buf[i], HEX);
-      Serial.print("\t");
-    }
-    Serial.println();
       //Öffnen:     00CF01FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
       {
@@ -468,7 +449,19 @@ void checkCan()
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
+      uint16_t voltage = (buf[1] & buf[0]) - 0xF000;
+
       Serial.print("Batteriespannung: ");
+      Serial.println();
+      float voltCor = voltage / 68;
+      Serial.print("Vrawcalc:");
+      Serial.print(String(voltCor,2));
+      Serial.println();
+      Serial.print("Rohdaten (1|0):");
+      Serial.print(buf[1]);
+      Serial.print("|");
+      Serial.print(buf[0]);
+      Serial.print(" V:");
       Serial.println(String(batteryVoltage, 2));
       if (buf[3] == 0x00)
       {
@@ -503,7 +496,9 @@ void checkIgnitionState()
   //Wenn der Status der Zündung sich verändert hat.
   if (ignitionOn != lastIgnitionState)
   {
-    //Zündung ist jetzt AUS
+
+    /*    DEAKTIVIERT, da jetzt über CAS gesteuert!
+     //Zündung ist jetzt AUS
     if (ignitionOn == HIGH)
     {
       Serial.println("[checkIgnitionState] Zündung ist jetzt AUS");
@@ -514,7 +509,7 @@ void checkIgnitionState()
       Serial.println("[checkIgnitionState] Zündung ist jetzt AN --> Starten");
       //Zündung ist jetzt AN
       startOdroid();
-    }
+    } */
   }
   //Letzten Status merken.
   lastIgnitionState = ignitionOn;
@@ -523,7 +518,7 @@ void checkIgnitionState()
 void startOdroid()
 {
   Serial.print("[STARTODROID] Odroid Status:");
-  Serial.print(odroidRunning == LOW ? "AUS" : "AN");
+  Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits läuft
   if (odroidStartRequested || odroidRunning || pendingAction != NONE)
   {
@@ -560,8 +555,8 @@ void pauseOdroid()
 
 void stopOdroid()
 {
-    Serial.print("[STOPODROID] Odroid Status:");
-  Serial.print(odroidRunning == LOW ? "AUS" : "AN");
+  Serial.print("[STOPODROID] Odroid Status:");
+  Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits aus ist. Das würde diesen nämlich einschalten.
   if (odroidShutdownRequested || !odroidRunning || pendingAction != NONE)
   {
