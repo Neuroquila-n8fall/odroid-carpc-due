@@ -114,7 +114,7 @@ void setup()
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
-  pinMode(PIN_ODROID_POWER_INPUT, INPUT);           //Odroid 3.3v Line als Rückmeldung
+  pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);           //Odroid 3.3v Line als Rückmeldung
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
 
   pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT); //Display Helligkeitssteuerung
@@ -283,14 +283,14 @@ void checkCan()
 
     unsigned int canId = CAN.getCanId();
 
-    Serial.print("CAN ID: ");
+/*     Serial.print("CAN ID: ");
     Serial.println(canId, HEX);
     for (int i = 0; i < len; i++) 
     {
       Serial.print(buf[i], HEX);
       Serial.print("\t");
     }
-    Serial.println();
+    Serial.println(); */
 
     switch (canId)
     {
@@ -346,14 +346,23 @@ void checkCan()
       break;
     //CAS: Schlüssel Buttons
     case 0x23A:
+      Serial.println("CAS: Schlüssel event:");
+      Serial.print("CAN ID: ");
+    Serial.println(canId, HEX);
+    for (int i = 0; i < len; i++) 
+    {
+      Serial.print(buf[i], HEX);
+      Serial.print("\t");
+    }
+    Serial.println();
       //Öffnen:     00CF01FF
-      if (buf[0] == 0x00 && buf[1] == 0xCF && buf[2] == 0x01 && buf[3] == 0xFF)
+      if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
       {
         Serial.print("START\n");
         startOdroid();
       }
       //Schließen:  00DF40FF
-      if (buf[0] == 0x00 && buf[1] == 0xDF && buf[2] == 0x40 && buf[3] == 0xFF)
+      if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
       {
         Serial.print("STOP\n");
         stopOdroid();
@@ -482,7 +491,7 @@ void checkPins()
   //Status des Zündungspins abrufen
   ignitionOn = digitalRead(PIN_IGNITION_INPUT);
   //Staus Odroid Vcc pin
-  odroidRunning = digitalRead(PIN_ODROID_POWER_INPUT);
+  odroidRunning = !digitalRead(PIN_ODROID_POWER_INPUT);
 
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
@@ -513,6 +522,8 @@ void checkIgnitionState()
 
 void startOdroid()
 {
+  Serial.print("[STARTODROID] Odroid Status:");
+  Serial.print(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits läuft
   if (odroidStartRequested || odroidRunning || pendingAction != NONE)
   {
@@ -549,6 +560,8 @@ void pauseOdroid()
 
 void stopOdroid()
 {
+    Serial.print("[STOPODROID] Odroid Status:");
+  Serial.print(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits aus ist. Das würde diesen nämlich einschalten.
   if (odroidShutdownRequested || !odroidRunning || pendingAction != NONE)
   {
