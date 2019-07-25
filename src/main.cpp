@@ -39,9 +39,12 @@ const int ODROID_SHUTDOWN_HOLD_DELAY = 5100;
 
 /*
       Tastenbefehle für Odroid Settings
+      Momentan ist es notwendig diese Tasten in der /vendor/usr/keylayout/Generic.kl abzuändern
 */
-const uint8_t MUSIC_NEXT_KEY = KEY_F1;
-const uint8_t MUSIC_PREV_KEY = KEY_F2;
+const byte MUSIC_NEXT_KEY = KEY_F1;
+const byte MUSIC_PREV_KEY = KEY_F2;
+const byte VOICE_BUTTON = KEY_F7;
+const byte PICKUP_BUTTON = KEY_F8;
 
 int odroidRunning = LOW; //Ergebnis vom Odroid GPIO #1. LOW = aus, HIGH = an
 
@@ -75,10 +78,22 @@ const int serialBaud = 115200;
 
 MCP_CAN CAN(SPI_CS_PIN); // Set CS pin
 
-int lastBrightness = 0;       //zuletzt errechneter Helligkeitswert für Display.
-int lightSensorMaxValue = 16; //maximaler Lichtwert des Lichtsensors
+int lastBrightness = 0; //zuletzt errechneter Helligkeitswert für Display.
 
 unsigned long lastMflPress = 0; //Debounce für MFL Knopfdruck
+
+int hours = 0;
+int minutes = 0;
+int seconds = 0;
+int days = 0;
+int month = 0;
+int year = 0;
+String timeString = "00:00:00 00.00.0000";
+
+unsigned long previousCanDateTime = 0;
+
+int ledState = LOW;
+unsigned long previousOneSecondTick = 0;
 
 //Mögliche Aktionen
 enum PendingAction
@@ -103,6 +118,10 @@ void pauseOdroid();
 void checkPins();
 //CAN Nachrichten prüfen
 void checkCan();
+//Zeitstempel bauen
+void buildTimestring();
+//Uhrzeit pflegen
+void timeKeeper();
 
 void setup()
 {
@@ -217,6 +236,25 @@ void loop()
 
   //CAN Nachrichten verarbeiten
   checkCan();
+
+  //1-Second timer
+  if (currentMillis - previousOneSecondTick >= 1000)
+  {
+    //Heartbeat
+    if (ledState = LOW)
+    {
+      ledState = HIGH;
+    }
+    else
+    {
+      ledState = LOW;
+    }
+    digitalWrite(LED_BUILTIN, ledState);
+    previousOneSecondTick = currentMillis;
+
+    //Advance Date and Time if necessary
+    timeKeeper();
+  }
 
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
 
@@ -354,28 +392,24 @@ void checkCan()
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
     {
-      //Lichtsensor auf Byte 0: Reicht von 0 bis 16. Kann aber offensichtlich auch vielleicht höher reichen.
+      //Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
       int lightValue = buf[0];
-      //Lichtwert adaptieren, falls ein höherer Wert festgestellt wurde.
-      if (lightValue > lightSensorMaxValue)
-      {
-        lightSensorMaxValue = lightValue;
-      }
 
       //Display auf volle Helligkeit einstellen
       int val = 255;
 
-      //Korrektur für späten Abend und Nacht
+      //Korrektur für späten Abend und Nacht und Morgenstunden
       if (lightValue < 3)
       {
         val = 150;
       }
 
-      //Wenn keine Lichtdaten vorhanden sind oder es wirklich stockfinster ist...
+      //Deaktiviert. Ist zu dunkel im Schatten...
+      /*       //Wenn keine Lichtdaten vorhanden sind oder es wirklich stockfinster ist...
       if (lightValue == 0)
       {
         val = 50;
-      }
+      } */
 
       //Wenn der Wert unverändert ist, nichts tun.
       if (val == lastBrightness)
@@ -405,11 +439,31 @@ void checkCan()
       //letzten Wert zum Vergleich speichern
       lastBrightness = val;
 
-      Serial.print("Helligkeit:");
+      Serial.print("Helligkeit (Roh, Steuerwert):");
       Serial.print(String(lightValue, DEC));
       Serial.print('\t');
       Serial.print(val);
       Serial.println();
+      break;
+    }
+    //Steuerung für Helligkeit der Armaturenbeleuchtung
+    case 0x202:
+    {
+      Serial.println("-0x202----------------------------------------");
+      //Byte 0 reicht von 1 bis 254 wobei 254 AUS bedeutet und 253 am hellsten
+      //Gefühlt dimmt das Licht des Armaturenbretts besser bei Lichteinwirkung als das, was vom Lichtsensor errechnet wird. Das muss aber erst überprüft werden.
+      Serial.print("Helligkeit der Armaturenbeleuchtung:");
+      Serial.println(buf[0]);
+      int lightVal = map(buf[0], 1, 253, 50, 255);
+      Serial.print("Errechnete Displayhelligkeit:");
+      Serial.println(lightVal);
+      break;
+    }
+    //IDrive Knopf
+    case 0x1B8:
+    {
+      //Drehung
+
       break;
     }
     //PDC
@@ -449,20 +503,7 @@ void checkCan()
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
-      uint16_t voltage = (buf[1] & buf[0]) - 0xF000;
 
-      Serial.print("Batteriespannung: ");
-      Serial.println();
-      float voltCor = voltage / 68;
-      Serial.print("Vrawcalc:");
-      Serial.print(String(voltCor,2));
-      Serial.println();
-      Serial.print("Rohdaten (1|0):");
-      Serial.print(buf[1]);
-      Serial.print("|");
-      Serial.print(buf[0]);
-      Serial.print(" V:");
-      Serial.println(String(batteryVoltage, 2));
       if (buf[3] == 0x00)
       {
         Serial.print("Engine RUNNING");
@@ -471,6 +512,38 @@ void checkCan()
       {
         Serial.print("Engine OFF");
       }
+      break;
+    }
+    case 0x2F8:
+    {
+      //Merken, wann das letzte mal diese Nachricht empfangen wurde.
+      previousCanDateTime = millis();
+      //0: Stunden
+      hours = buf[0];
+      //1: Minuten
+      minutes = buf[1];
+      //2: Sekunden
+      seconds = buf[2];
+      //3: Tage
+      days = buf[3];
+      //4: die ersten 4 bits stellen den Monat dar.
+      month = buf[4] >> 4;
+      //6 & 5: Jahr
+      // #6 nach links shiften und 5 addieren
+      year = (buf[6] << 8) + buf[5];
+
+      Serial.print("Datum & Uhrzeit:\t");
+      Serial.print(hours);
+      Serial.print(':');
+      Serial.print(minutes);
+      Serial.print(':');
+      Serial.print(seconds);
+      Serial.print('\t');
+      Serial.print(days);
+      Serial.print('.');
+      Serial.print(month);
+      Serial.print('.');
+      Serial.println(year);
       break;
     }
     default:
@@ -571,4 +644,42 @@ void stopOdroid()
   Serial.println("[stopOdroid] Herunterfahren angefordert");
 
   previousOdroidActionTime = millis();
+}
+
+void buildTimestring()
+{
+  timeString = hours + ':' + minutes + ':' + seconds + ' ' + days + '.' + month + '.' + year;
+}
+
+void timeKeeper()
+{
+  unsigned long currentMillis = millis();
+  //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
+  if(currentMillis - previousCanDateTime > 1000)
+  {
+    if (hours == 23 && minutes == 59 && seconds == 59)
+    {
+      hours = 0;
+      minutes = 0;
+      seconds = 0;
+    }
+    if(minutes == 59 && seconds == 59)
+    {
+      hours++;
+      minutes = 0;
+      seconds = 0;
+    }
+    if(seconds == 59)
+    {
+      minutes++;
+      seconds = 0;
+      buildTimestring();
+      //Tick abgeschlossen
+      return;
+    }
+    buildTimestring();
+    //Sekunden erhöhen
+    seconds++;
+    
+  }
 }
