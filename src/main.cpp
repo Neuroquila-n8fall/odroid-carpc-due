@@ -149,9 +149,10 @@ void checkCan();
 void buildtimeStamp();
 //CAN Nachrichten auf der Konsole ausgeben
 void printCanMsg(int canId, unsigned char *buffer, int len);
-//Mausbewegungen für scrollen simulieren
+//Mausrad simulieren, je nachdem in welche Richtung der iDrive Knopf gedreht wurde.
 void scrollScreen();
-//Uhrzeit pflegen
+//Uhrzeit pflegen. Ist ausschließlich dazu da die Uhrzeit voran schreiten zu lassen, wenn der Canbus inaktiv ist und keine Zeit vom Auto kommt.
+//Die RTC Library kommt leider nicht in Frage da mein DUE board wohl keinen Kristall für RTC hat und daher der MCU einfriert beim initialisieren.
 void timeKeeper();
 
 void setup()
@@ -162,13 +163,7 @@ void setup()
   Keyboard.begin();
   Mouse.begin();
 
-  //RTC-Init
-  //rtcclock.init();
-  //rtcclock.set_clock(__DATE__, __TIME__);
-
   buildtimeStamp();
-  Serial.print(timeStamp + '\t');
-  Serial.print("[setup] RTC");
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
@@ -261,7 +256,7 @@ void loop()
   if (currentMillis - previousOneSecondTick >= 1000)
   {
     //Heartbeat
-    if (ledState = LOW)
+    if (ledState == LOW)
     {
       ledState = HIGH;
     }
@@ -271,6 +266,8 @@ void loop()
     }
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
+    //Aktualisieren.
+    timeKeeper();
     //Zeitstempel Variablen füllen
     buildtimeStamp();
   }
@@ -798,7 +795,7 @@ void checkCan()
       year = (buf[6] << 8) + buf[5];
 
       buildtimeStamp();
-      
+
       break;
     }
     default:
@@ -945,7 +942,7 @@ void timeKeeper()
 {
   unsigned long currentMillis = millis();
   //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
-  if(currentMillis - previousCanDateTime > 1000)
+  if (currentMillis - previousCanDateTime > 1000)
   {
     if (hours == 23 && minutes == 59 && seconds == 59)
     {
@@ -953,13 +950,13 @@ void timeKeeper()
       minutes = 0;
       seconds = 0;
     }
-    if(minutes == 59 && seconds == 59)
+    if (minutes == 59 && seconds == 59)
     {
       hours++;
       minutes = 0;
       seconds = 0;
     }
-    if(seconds == 59)
+    if (seconds == 59)
     {
       minutes++;
       seconds = 0;
@@ -971,4 +968,4 @@ void timeKeeper()
     //Sekunden erhöhen
     seconds++;
   }
-} 
+}
