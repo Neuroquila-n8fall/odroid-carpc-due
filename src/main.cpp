@@ -98,14 +98,7 @@ unsigned long previousOneSecondTick = 0;
 
 RTC_clock rtcclock(XTAL);
 
-//iDrive Knopf gedreht?
-bool iDriveRotChanged = false;
-//Zuletzt gesicherte Drehung des Knopfes um Richtung zu bestimmen
-int iDriveRotLast = 0;
-//Drehungs-counter
-int iDriveRotCountLast = 0;
-//Drehrichtung
-iDriveRotationDirection iDriveRotDir = UNCHANGED;
+
 
 //Das muss eventuell nach dem Wakeup gesendet werden, damit der Controller anfängt Drehungspositionen zu schicken. Kann gut sein, dass das bereits automatisch passiert.
 unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
@@ -119,6 +112,9 @@ enum PendingAction
   NONE
 };
 
+PendingAction pendingAction = NONE; //Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
+
+//iDrive Stuff
 enum iDriveRotationDirection
 {
   ROTATION_RIGHT,
@@ -126,7 +122,15 @@ enum iDriveRotationDirection
   UNCHANGED
 };
 
-PendingAction pendingAction = NONE; //Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
+//iDrive Knopf gedreht?
+bool iDriveRotChanged = false;
+//Zuletzt gesicherte Drehung des Knopfes um Richtung zu bestimmen
+int iDriveRotLast = 0;
+//Drehungs-counter
+int iDriveRotCountLast = 0;
+//Drehrichtung
+iDriveRotationDirection iDriveRotDir = UNCHANGED;
+
 
 //Status der Zündung abrufen und entsprechende Aktionen auslösen
 void checkIgnitionState();
@@ -743,7 +747,7 @@ void checkCan()
       buildTimestring();
       Serial.print("Datum & Uhrzeit:\t");
       Serial.print(timeString);
-      
+
       break;
     }
     default:
