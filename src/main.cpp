@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <mcp_can.h>
 #include <Keyboard.h>
+#include <Mouse.h>
 #include <rtc_clock.h>
 
 //Opto 2 - Zündung Aktiv
@@ -40,7 +41,7 @@ const int ODROID_SHUTDOWN_HOLD_DELAY = 5100;
 
 /*
       Tastenbefehle für Odroid Settings
-      Momentan ist es notwendig diese Tasten in der /vendor/usr/keylayout/Generic.kl abzuändern
+      Momentan ist es notwendig diese Tasten in der /vendor/usr/keylayout/Generic.kl abzuändern um die gewünschte Funktion zu besitzen
 */
 const byte MUSIC_NEXT_KEY = KEY_F1;
 const byte MUSIC_PREV_KEY = KEY_F2;
@@ -89,7 +90,9 @@ int seconds = 0;
 int days = 0;
 int month = 0;
 int year = 0;
-char timeString[20] = "00:00:00 00.00.0000";
+char timeStamp[20] = "00:00:00 00.00.0000";
+char timeString[9] = "00:00:00";
+char dateString[11] = "00.00.0000";
 
 unsigned long previousCanDateTime = 0;
 
@@ -97,8 +100,6 @@ int ledState = LOW;
 unsigned long previousOneSecondTick = 0;
 
 RTC_clock rtcclock(XTAL);
-
-
 
 //Das muss eventuell nach dem Wakeup gesendet werden, damit der Controller anfängt Drehungspositionen zu schicken. Kann gut sein, dass das bereits automatisch passiert.
 unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
@@ -111,8 +112,10 @@ enum PendingAction
   ODROID_STANDBY,
   NONE
 };
-
-PendingAction pendingAction = NONE; //Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
+//Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
+//Sofern diese nicht NONE ist, können keine weiteren Aktionen ausgeführt werden.
+//Dies soll doppelte Ausführungen von Start & Stop während der Hoch- und Herunterfahrphase des PCs verhindern
+PendingAction pendingAction = NONE;
 
 //iDrive Stuff
 enum iDriveRotationDirection
@@ -131,7 +134,6 @@ int iDriveRotCountLast = 0;
 //Drehrichtung
 iDriveRotationDirection iDriveRotDir = UNCHANGED;
 
-
 //Status der Zündung abrufen und entsprechende Aktionen auslösen
 void checkIgnitionState();
 //Start bzw. Aufwecken
@@ -145,23 +147,31 @@ void checkPins();
 //CAN Nachrichten prüfen
 void checkCan();
 //Zeitstempel bauen
-void buildTimestring();
+void buildtimeStamp();
+//CAN Nachrichten auf der Konsole ausgeben
+void printCanMsg(int canId, unsigned char *buffer, int len);
+//Mausbewegungen für scrollen simulieren
+void scrollScreen();
 
 void setup()
 {
   digitalWrite(LED_BUILTIN, LOW);
-
-  Wire.begin(WIRE_ADDRESS); //I2C Initialisieren
+  Wire.begin(WIRE_ADDRESS); //I2C-Init
   Serial.begin(115200);
   Keyboard.begin();
+  Mouse.begin();
 
-  //RTC Initialisieren
+  //RTC-Init
   rtcclock.init();
-  rtcclock.set_clock(__DATE__,__TIME__);
+  rtcclock.set_clock(__DATE__, __TIME__);
+
+  buildtimeStamp();
+  Serial.print(timeStamp + '\t');
+  Serial.print("[setup] RTC");
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
-  pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid 3.3v Line als Rückmeldung
+  pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid VOUT Pin als Rückmeldung ob der PC eingeschaltet ist
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
 
   pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT); //Display Helligkeitssteuerung
@@ -171,7 +181,7 @@ void setup()
   {
     Serial.println("[setup] CAN BUS Shield init fail");
     Serial.println("[setup] Init CAN BUS Shield again");
-    delay(100);
+    delay(1000);
   }
   Serial.println("[setup] CAN BUS Shield init ok!");
 
@@ -260,7 +270,8 @@ void loop()
     }
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
-
+    //Zeitstempel Variablen füllen
+    buildtimeStamp();
   }
 
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
@@ -281,6 +292,7 @@ void loop()
     case ODROID_STOP:
       if (currentMillis - startPowerTransitionMillis >= SHUTDOWN_WAIT_DELAY)
       {
+        Serial.print(timeString + '\t');
         Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -288,6 +300,7 @@ void loop()
     case ODROID_START:
       if (currentMillis - startPowerTransitionMillis >= STARTUP_WAIT_DELAY)
       {
+        Serial.print(timeString + '\t');
         Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -295,6 +308,7 @@ void loop()
     case ODROID_STANDBY:
       if (currentMillis - startPowerTransitionMillis >= ODROID_STANDBY_DELAY)
       {
+        Serial.print(timeString + '\t');
         Serial.println("[LOOP] Stand-by Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -332,6 +346,7 @@ void checkCan()
     {
     //MFL Knöpfe
     case 0x1D6:
+    {
       //Kein Knopf gedrückt (alle 100ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
       {
@@ -346,6 +361,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
+          Serial.print(timeString + '\t');
           Serial.print("NEXT\n");
           Keyboard.press(MUSIC_NEXT_KEY);
           delay(200);
@@ -359,6 +375,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
+          Serial.print(timeString + '\t');
           Serial.print("PREV\n");
           Keyboard.press(MUSIC_PREV_KEY);
           delay(200);
@@ -375,42 +392,61 @@ void checkCan()
       {
       }
       break;
+    }
     //CAS: Schlüssel & Zündung
     case 0x130:
+    {
       //Wakeup signal
       if (buf[0] == 0x45)
       {
+        //TODO: Prüfen ob ideses Signal vom CI bereits gesendet wird!
         //Controller vorgaukeln, dass das CIC da ist.
         //CAN.sendMsgBuf(0x273,0,8,IDRIVE_CTRL_WAKEUP);
       }
       break;
+    }
+      //CIC
+    case 0x273:
+    {
+      Serial.print(timeString + '\t');
+      Serial.print("CIC\t");
+      printCanMsg(canId, buf, len);
+    }
     //CAS: Schlüssel Buttons
     case 0x23A:
+
       //Öffnen:     00CF01FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
       {
+        Serial.print(timeString + '\t');
         Serial.print("START\n");
         startOdroid();
       }
       //Schließen:  00DF40FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
       {
+        Serial.print(timeString + '\t');
         Serial.print("STOP\n");
         stopOdroid();
       }
-      //Kofferraum: N/A
+      //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
 
       break;
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
     {
+      Serial.print(timeString + '\t');
+      Serial.print("RLS\t");
+      printCanMsg(canId, buf, len);
       //Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
+      //In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
+      //Genaue Licht daten müssen geprüft werden. Es liegt die Vermutung nahe, dass die zwei verschiedenen Lichtsensoren an der Scheibe auch getrennt übermittelt werden.
       int lightValue = buf[0];
 
       //Display auf volle Helligkeit einstellen
       int val = 255;
 
-      //Korrektur für späten Abend und Nacht und Morgenstunden
+      //Bei wenig Licht abdimmen
       if (lightValue < 3)
       {
         val = 150;
@@ -450,7 +486,7 @@ void checkCan()
       }
       //letzten Wert zum Vergleich speichern
       lastBrightness = val;
-
+      Serial.print(timeString + '\t');
       Serial.print("Helligkeit (Roh, Steuerwert):");
       Serial.print(String(lightValue, DEC));
       Serial.print('\t');
@@ -458,7 +494,7 @@ void checkCan()
       Serial.println();
       break;
     }
-    //Steuerung für Helligkeit der Armaturenbeleuchtung
+    //Steuerung für Helligkeit der Beleuchtung
     case 0x202:
     {
     }
@@ -487,12 +523,14 @@ void checkCan()
         if (iDriveRotLast == 254 && buf[1] == 0)
         {
           iDriveRotDir = ROTATION_RIGHT;
+          iDriveRotLast = buf[1];
           break;
         }
         //Umgekehrte Drehrichtung
         if (iDriveRotLast == 0 && buf[1] == 254)
         {
           iDriveRotDir = ROTATION_LEFT;
+          iDriveRotLast = buf[1];
           break;
         }
         //Wenn der zuletzt gespeicherte Wert größer als der neue ist, dann wurde der Knopf links gedreht
@@ -505,6 +543,8 @@ void checkCan()
         {
           iDriveRotDir = ROTATION_RIGHT;
         }
+        //Wert speichern
+        iDriveRotLast = buf[1];
       }
       else
       {
@@ -525,9 +565,16 @@ void checkCan()
           {
           //Kurz gedrückt
           case 0x01:
+            Keyboard.press(KEY_RETURN);
+            delay(100);
+            Keyboard.releaseAll();
             break;
           //Lang gedrückt
           case 0x02:
+            Keyboard.press(KEY_LEFT_ALT);
+            Keyboard.press(KEY_TAB);
+            delay(100);
+            Keyboard.releaseAll();
             break;
           //Losgelassen
           case 0x00:
@@ -540,6 +587,10 @@ void checkCan()
           {
           //Kurz gedrückt
           case 0x01:
+            Keyboard.press(KEY_LEFT_CTRL);
+            Keyboard.press(KEY_BACKSPACE);
+            delay(100);
+            Keyboard.releaseAll();
             break;
           //Lang gedrückt
           case 0x02:
@@ -634,25 +685,36 @@ void checkCan()
         {
           //Hoch (kurz)
         case 0x11:
-          /* code */
+          Keyboard.press(KEY_UP_ARROW);
+          delay(100);
+          Keyboard.releaseAll();
           break;
           //Hoch (lang)
         case 0x12:
           break;
         //Rechts (kurz)
         case 0x21:
+          Keyboard.press(KEY_RIGHT_ARROW);
+          delay(100);
+          Keyboard.releaseAll();
           break;
         //Rechts (lang)
         case 0x22:
           break;
         //Runter (kurz)
         case 0x41:
+          Keyboard.press(KEY_DOWN_ARROW);
+          delay(100);
+          Keyboard.releaseAll();
           break;
         //Runter (lang)
         case 0x42:
           break;
         //Links (kurz)
         case 0x81:
+          Keyboard.press(KEY_LEFT_ARROW);
+          delay(100);
+          Keyboard.releaseAll();
           break;
         //Links (lang)
         case 0x82:
@@ -704,7 +766,9 @@ void checkCan()
       ///Alternative Rechnung
       int voltageRawVal = ((buf[6] << 8) + buf[5]) - 0xF000;
       float voltageCalculated = voltageRawVal / 68;
-
+      Serial.print(timeString + '\t');
+      Serial.print("Batteriespannung: ");
+      Serial.println(String(voltageCalculated, 2));
       if (buf[3] == 0x00)
       {
         Serial.print("Engine RUNNING");
@@ -718,8 +782,8 @@ void checkCan()
     case 0x2F8:
     {
       //
-      int hh,mm,ss;
-      rtcclock.get_time(&hh,&mm,&ss);
+      int hh, mm, ss;
+      rtcclock.get_time(&hh, &mm, &ss);
 
       //0: Stunden
       hours = buf[0];
@@ -735,18 +799,17 @@ void checkCan()
       // #6 nach links shiften und 5 addieren
       year = (buf[6] << 8) + buf[5];
 
-      
       //Uhrzeit weicht ab...
-      if(hours != hh || minutes != mm)
+      if (hours != hh || minutes != mm)
       {
         //...also wird sie gestellt
-        rtcclock.set_time(hours,minutes,seconds);
-        rtcclock.set_date(days,month,year);
+        rtcclock.set_time(hours, minutes, seconds);
+        rtcclock.set_date(days, month, year);
       }
 
-      buildTimestring();
+      buildtimeStamp();
       Serial.print("Datum & Uhrzeit:\t");
-      Serial.print(timeString);
+      Serial.print(timeStamp);
 
       break;
     }
@@ -754,6 +817,9 @@ void checkCan()
       break;
     }
   }
+
+  //Mausbewegungen zum Scrollen umsetzen.
+  scrollScreen();
 }
 
 void checkPins()
@@ -850,10 +916,42 @@ void stopOdroid()
   previousOdroidActionTime = millis();
 }
 
-void buildTimestring()
+void buildtimeStamp()
 {
-  int hh,mm,ss,dow,day,month,year;
-  rtcclock.get_time(&hh,&mm,&ss);
-  rtcclock.get_date(&dow,&day,&month,&year);
-  sprintf(timeString,"%02d:%02d:%02d %02d.%02d.%4d",hh,mm,ss,day,month,year);
+  int hh, mm, ss, dow, day, month, year;
+  rtcclock.get_time(&hh, &mm, &ss);
+  rtcclock.get_date(&dow, &day, &month, &year);
+  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%4d", hh, mm, ss, day, month, year);
+  sprintf(timeString, "%02d:%02d:%02d", hh, mm, ss);
+  sprintf(dateString, "%02d.%02d.%4d", day, month, year);
+}
+
+void printCanMsg(int canId, unsigned char *buffer, int len)
+{
+  //OUTPUT:
+  //ABC FF  FF  FF  FF  FF  FF  FF  FF
+  Serial.print(canId, HEX);
+  Serial.println('\t');
+  for (int i = 0; i < len; i++)
+  {
+    Serial.print(buffer[i], HEX);
+    Serial.print("\t");
+  }
+  Serial.println();
+}
+
+void scrollScreen()
+{
+  if (iDriveRotDir == ROTATION_RIGHT)
+  {
+    Mouse.move(0, 0, 1);
+  }
+  if (iDriveRotDir == ROTATION_LEFT)
+  {
+    Mouse.move(0, 0, -1);
+  }
+  if (iDriveRotDir == UNCHANGED)
+  {
+    Mouse.move(0, 0, 0);
+  }
 }
