@@ -566,18 +566,15 @@ void checkCan()
           //Kurz gedrückt
           case 0x01:
             Keyboard.press(KEY_RETURN);
-            delay(100);
-            Keyboard.releaseAll();
             break;
           //Lang gedrückt
           case 0x02:
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
-            delay(100);
-            Keyboard.releaseAll();
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -589,14 +586,13 @@ void checkCan()
           case 0x01:
             Keyboard.press(KEY_LEFT_CTRL);
             Keyboard.press(KEY_BACKSPACE);
-            delay(100);
-            Keyboard.releaseAll();
             break;
           //Lang gedrückt
           case 0x02:
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -612,6 +608,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -627,6 +624,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -642,6 +640,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -657,6 +656,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -672,6 +672,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
+          Keyboard.releaseAll();
             break;
           }
           break;
@@ -686,8 +687,6 @@ void checkCan()
           //Hoch (kurz)
         case 0x11:
           Keyboard.press(KEY_UP_ARROW);
-          delay(100);
-          Keyboard.releaseAll();
           break;
           //Hoch (lang)
         case 0x12:
