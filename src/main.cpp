@@ -4,7 +4,6 @@
 #include <mcp_can.h>
 #include <Keyboard.h>
 #include <Mouse.h>
-#include <rtc_clock.h>
 
 //Opto 2 - Zündung Aktiv
 const int PIN_IGNITION_INPUT = 6;
@@ -99,7 +98,7 @@ unsigned long previousCanDateTime = 0;
 int ledState = LOW;
 unsigned long previousOneSecondTick = 0;
 
-RTC_clock rtcclock(XTAL);
+//RTC_clock rtcclock(XTAL);
 
 //Das muss eventuell nach dem Wakeup gesendet werden, damit der Controller anfängt Drehungspositionen zu schicken. Kann gut sein, dass das bereits automatisch passiert.
 unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
@@ -152,6 +151,8 @@ void buildtimeStamp();
 void printCanMsg(int canId, unsigned char *buffer, int len);
 //Mausbewegungen für scrollen simulieren
 void scrollScreen();
+//Uhrzeit pflegen
+void timeKeeper();
 
 void setup()
 {
@@ -162,8 +163,8 @@ void setup()
   Mouse.begin();
 
   //RTC-Init
-  rtcclock.init();
-  rtcclock.set_clock(__DATE__, __TIME__);
+  //rtcclock.init();
+  //rtcclock.set_clock(__DATE__, __TIME__);
 
   buildtimeStamp();
   Serial.print(timeStamp + '\t');
@@ -292,7 +293,7 @@ void loop()
     case ODROID_STOP:
       if (currentMillis - startPowerTransitionMillis >= SHUTDOWN_WAIT_DELAY)
       {
-        Serial.print(timeString + '\t');
+
         Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -300,7 +301,7 @@ void loop()
     case ODROID_START:
       if (currentMillis - startPowerTransitionMillis >= STARTUP_WAIT_DELAY)
       {
-        Serial.print(timeString + '\t');
+
         Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -308,7 +309,7 @@ void loop()
     case ODROID_STANDBY:
       if (currentMillis - startPowerTransitionMillis >= ODROID_STANDBY_DELAY)
       {
-        Serial.print(timeString + '\t');
+
         Serial.println("[LOOP] Stand-by Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -361,7 +362,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.print(timeString + '\t');
+
           Serial.print("NEXT\n");
           Keyboard.press(MUSIC_NEXT_KEY);
           delay(200);
@@ -375,7 +376,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.print(timeString + '\t');
+
           Serial.print("PREV\n");
           Keyboard.press(MUSIC_PREV_KEY);
           delay(200);
@@ -408,7 +409,7 @@ void checkCan()
       //CIC
     case 0x273:
     {
-      Serial.print(timeString + '\t');
+
       Serial.print("CIC\t");
       printCanMsg(canId, buf, len);
     }
@@ -418,14 +419,14 @@ void checkCan()
       //Öffnen:     00CF01FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
       {
-        Serial.print(timeString + '\t');
+
         Serial.print("START\n");
         startOdroid();
       }
       //Schließen:  00DF40FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
       {
-        Serial.print(timeString + '\t');
+
         Serial.print("STOP\n");
         stopOdroid();
       }
@@ -435,12 +436,8 @@ void checkCan()
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
     {
-      Serial.print(timeString + '\t');
-      Serial.print("RLS\t");
-      printCanMsg(canId, buf, len);
       //Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
       //In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
-      //Genaue Licht daten müssen geprüft werden. Es liegt die Vermutung nahe, dass die zwei verschiedenen Lichtsensoren an der Scheibe auch getrennt übermittelt werden.
       int lightValue = buf[0];
 
       //Display auf volle Helligkeit einstellen
@@ -462,7 +459,7 @@ void checkCan()
       //Wenn der Wert unverändert ist, nichts tun.
       if (val == lastBrightness)
       {
-        return;
+        break;
       }
 
       //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
@@ -486,7 +483,8 @@ void checkCan()
       }
       //letzten Wert zum Vergleich speichern
       lastBrightness = val;
-      Serial.print(timeString + '\t');
+
+      //Ausgabe auf Konsole
       Serial.print("Helligkeit (Roh, Steuerwert):");
       Serial.print(String(lightValue, DEC));
       Serial.print('\t');
@@ -574,7 +572,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -592,7 +590,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -608,7 +606,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -624,7 +622,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -640,7 +638,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -656,7 +654,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -672,7 +670,7 @@ void checkCan()
             break;
           //Losgelassen
           case 0x00:
-          Keyboard.releaseAll();
+            Keyboard.releaseAll();
             break;
           }
           break;
@@ -763,11 +761,12 @@ void checkCan()
       //(((Byte[1]-240 )*256)+Byte[0])/68
       float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
       ///Alternative Rechnung
-      int voltageRawVal = ((buf[6] << 8) + buf[5]) - 0xF000;
+      word correction = 0xF000;
+      word voltageRawVal = ((buf[6] << 8) + buf[5]) - correction;
       float voltageCalculated = voltageRawVal / 68;
-      Serial.print(timeString + '\t');
-      Serial.print("Batteriespannung: ");
-      Serial.println(String(voltageCalculated, 2));
+      Serial.print("Batterie Rohwertberechnung:");
+      Serial.println(voltageCalculated);
+
       if (buf[3] == 0x00)
       {
         Serial.print("Engine RUNNING");
@@ -778,11 +777,11 @@ void checkCan()
       }
       break;
     }
+    //Uhrzeit
     case 0x2F8:
     {
-      //
-      int hh, mm, ss;
-      rtcclock.get_time(&hh, &mm, &ss);
+      //Merken, wann das letzte mal diese Nachricht empfangen wurde.
+      previousCanDateTime = millis();
 
       //0: Stunden
       hours = buf[0];
@@ -798,18 +797,8 @@ void checkCan()
       // #6 nach links shiften und 5 addieren
       year = (buf[6] << 8) + buf[5];
 
-      //Uhrzeit weicht ab...
-      if (hours != hh || minutes != mm)
-      {
-        //...also wird sie gestellt
-        rtcclock.set_time(hours, minutes, seconds);
-        rtcclock.set_date(days, month, year);
-      }
-
       buildtimeStamp();
-      Serial.print("Datum & Uhrzeit:\t");
-      Serial.print(timeStamp);
-
+      
       break;
     }
     default:
@@ -917,12 +906,9 @@ void stopOdroid()
 
 void buildtimeStamp()
 {
-  int hh, mm, ss, dow, day, month, year;
-  rtcclock.get_time(&hh, &mm, &ss);
-  rtcclock.get_date(&dow, &day, &month, &year);
-  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%4d", hh, mm, ss, day, month, year);
-  sprintf(timeString, "%02d:%02d:%02d", hh, mm, ss);
-  sprintf(dateString, "%02d.%02d.%4d", day, month, year);
+  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%4d", hours, minutes, seconds, days, month, year);
+  sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
+  sprintf(dateString, "%02d.%02d.%4d", days, month, year);
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -954,3 +940,35 @@ void scrollScreen()
     Mouse.move(0, 0, 0);
   }
 }
+
+void timeKeeper()
+{
+  unsigned long currentMillis = millis();
+  //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
+  if(currentMillis - previousCanDateTime > 1000)
+  {
+    if (hours == 23 && minutes == 59 && seconds == 59)
+    {
+      hours = 0;
+      minutes = 0;
+      seconds = 0;
+    }
+    if(minutes == 59 && seconds == 59)
+    {
+      hours++;
+      minutes = 0;
+      seconds = 0;
+    }
+    if(seconds == 59)
+    {
+      minutes++;
+      seconds = 0;
+      buildtimeStamp();
+      //Tick abgeschlossen
+      return;
+    }
+    buildtimeStamp();
+    //Sekunden erhöhen
+    seconds++;
+  }
+} 
