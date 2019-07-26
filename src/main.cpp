@@ -3,6 +3,7 @@
 #include <SPI.h>
 #include <mcp_can.h>
 #include <Keyboard.h>
+#include <rtc_clock.h>
 
 //Opto 2 - Zündung Aktiv
 const int PIN_IGNITION_INPUT = 6;
@@ -88,12 +89,26 @@ int seconds = 0;
 int days = 0;
 int month = 0;
 int year = 0;
-String timeString = "00:00:00 00.00.0000";
+char timeString[20] = "00:00:00 00.00.0000";
 
 unsigned long previousCanDateTime = 0;
 
 int ledState = LOW;
 unsigned long previousOneSecondTick = 0;
+
+RTC_clock rtcclock(XTAL);
+
+//iDrive Knopf gedreht?
+bool iDriveRotChanged = false;
+//Zuletzt gesicherte Drehung des Knopfes um Richtung zu bestimmen
+int iDriveRotLast = 0;
+//Drehungs-counter
+int iDriveRotCountLast = 0;
+//Drehrichtung
+iDriveRotationDirection iDriveRotDir = UNCHANGED;
+
+//Das muss eventuell nach dem Wakeup gesendet werden, damit der Controller anfängt Drehungspositionen zu schicken. Kann gut sein, dass das bereits automatisch passiert.
+unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
 
 //Mögliche Aktionen
 enum PendingAction
@@ -102,6 +117,13 @@ enum PendingAction
   ODROID_STOP,
   ODROID_STANDBY,
   NONE
+};
+
+enum iDriveRotationDirection
+{
+  ROTATION_RIGHT,
+  ROTATION_LEFT,
+  UNCHANGED
 };
 
 PendingAction pendingAction = NONE; //Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
@@ -120,8 +142,6 @@ void checkPins();
 void checkCan();
 //Zeitstempel bauen
 void buildTimestring();
-//Uhrzeit pflegen
-void timeKeeper();
 
 void setup()
 {
@@ -130,6 +150,10 @@ void setup()
   Wire.begin(WIRE_ADDRESS); //I2C Initialisieren
   Serial.begin(115200);
   Keyboard.begin();
+
+  //RTC Initialisieren
+  rtcclock.init();
+  rtcclock.set_clock(__DATE__,__TIME__);
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
@@ -146,25 +170,6 @@ void setup()
     delay(100);
   }
   Serial.println("[setup] CAN BUS Shield init ok!");
-
-  //Filter deaktiviert. Es sollte auf dem DUE genügend Power vorhanden sein um alles zu verarbeiten.
-  /*   //Masken und Filter setzen
-  // -1- 0111 1111 1111 -> Spezifizierte IDs filtern
-  CAN.init_Mask(0, 0, 0x7FF);
-  // -1.0- MFL Knöpfe
-  CAN.init_Filt(0, 0, 0x1D6);
-  // -1.1- Fernbedienung
-  CAN.init_Filt(1, 0, 0x23A);
-  // -2- 0111 1111 1111 -> Spezifizierte IDs filtern
-  CAN.init_Mask(1, 0, 0x7FF);
-  // -2.1- Licht- Temperatur- und Solarsensoren
-  CAN.init_Filt(2, 0, 0x32E);
-  // -2.2- PDC
-  CAN.init_Filt(3, 0, 0x1C2);
-  // -2.3- Rückwärtsgang
-  CAN.init_Filt(4, 0, 0x3B0);
-  // -2.4- Batteriespannung & Status Triebwerk
-  CAN.init_Filt(5, 0, 0x3B4); */
 
   //Display von ganz dunkel nach ganz Hell stellen. Quasi als Test
   for (int i = 0; i <= 255; i++)
@@ -252,8 +257,6 @@ void loop()
     digitalWrite(LED_BUILTIN, ledState);
     previousOneSecondTick = currentMillis;
 
-    //Advance Date and Time if necessary
-    timeKeeper();
   }
 
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
@@ -370,7 +373,12 @@ void checkCan()
       break;
     //CAS: Schlüssel & Zündung
     case 0x130:
-
+      //Wakeup signal
+      if (buf[0] == 0x45)
+      {
+        //Controller vorgaukeln, dass das CIC da ist.
+        //CAN.sendMsgBuf(0x273,0,8,IDRIVE_CTRL_WAKEUP);
+      }
       break;
     //CAS: Schlüssel Buttons
     case 0x23A:
@@ -449,20 +457,206 @@ void checkCan()
     //Steuerung für Helligkeit der Armaturenbeleuchtung
     case 0x202:
     {
-      Serial.println("-0x202----------------------------------------");
-      //Byte 0 reicht von 1 bis 254 wobei 254 AUS bedeutet und 253 am hellsten
-      //Gefühlt dimmt das Licht des Armaturenbretts besser bei Lichteinwirkung als das, was vom Lichtsensor errechnet wird. Das muss aber erst überprüft werden.
-      Serial.print("Helligkeit der Armaturenbeleuchtung:");
-      Serial.println(buf[0]);
-      int lightVal = map(buf[0], 1, 253, 50, 255);
-      Serial.print("Errechnete Displayhelligkeit:");
-      Serial.println(lightVal);
+    }
+    //Rückspiegel und dessen Lichtsensorik
+    case 0x286:
+    {
+    }
+    //iDrive Controller
+
+    //iDrive Controller: Drehung
+    case 0x264:
+    {
+      //Byte 0 beinhaltet den counter
+      //Byte 1 zählt je nach Drehrichtung von 0 nach 254 hoch
+      //   Ich vermute aktuell mal, dass wenn 254 erreicht wurde der Wert wieder auf 0 zurückspringt
+
+      //Grundsätzliche bestimmung ob der Knopf überhaupt mal gedreht wurde
+      iDriveRotChanged = iDriveRotCountLast != buf[0];
+
+      //Etwas hat sich an der Drehrichtung geändert
+      if (iDriveRotLast != buf[1])
+      {
+        iDriveRotChanged = true;
+        //Sonderfälle bearbeiten
+        //Knopf war am logischen Anschlag und springt jetzt wieder auf 0 zurück.
+        if (iDriveRotLast == 254 && buf[1] == 0)
+        {
+          iDriveRotDir = ROTATION_RIGHT;
+          break;
+        }
+        //Umgekehrte Drehrichtung
+        if (iDriveRotLast == 0 && buf[1] == 254)
+        {
+          iDriveRotDir = ROTATION_LEFT;
+          break;
+        }
+        //Wenn der zuletzt gespeicherte Wert größer als der neue ist, dann wurde der Knopf links gedreht
+        //Umgekehrt wurde er Rechts gedreht
+        if (iDriveRotLast > buf[1])
+        {
+          iDriveRotDir = ROTATION_LEFT;
+        }
+        else
+        {
+          iDriveRotDir = ROTATION_RIGHT;
+        }
+      }
+      else
+      {
+        iDriveRotChanged = false;
+      }
       break;
     }
-    //IDrive Knopf
-    case 0x1B8:
+    //Knöpfe und Joystick
+    case 0x267:
     {
-      //Drehung
+      if (buf[4] != 0xDD)
+      {
+        switch (buf[5])
+        {
+        //Joystick oder Menüknopf
+        case 0x01:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //BACK Button
+        case 0x02:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //OPTION Button
+        case 0x04:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //RADIO Button
+        case 0x08:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //CD Button
+        case 0x10:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //NAV Button
+        case 0x20:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+          //TEL Button
+        case 0x40:
+          switch (buf[3])
+          {
+          //Kurz gedrückt
+          case 0x01:
+            break;
+          //Lang gedrückt
+          case 0x02:
+            break;
+          //Losgelassen
+          case 0x00:
+            break;
+          }
+          break;
+        default:
+          break;
+        }
+      }
+      else
+      {
+        switch (buf[3])
+        {
+          //Hoch (kurz)
+        case 0x11:
+          /* code */
+          break;
+          //Hoch (lang)
+        case 0x12:
+          break;
+        //Rechts (kurz)
+        case 0x21:
+          break;
+        //Rechts (lang)
+        case 0x22:
+          break;
+        //Runter (kurz)
+        case 0x41:
+          break;
+        //Runter (lang)
+        case 0x42:
+          break;
+        //Links (kurz)
+        case 0x81:
+          break;
+        //Links (lang)
+        case 0x82:
+          break;
+        default:
+          break;
+        }
+      }
 
       break;
     }
@@ -503,6 +697,9 @@ void checkCan()
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
+      ///Alternative Rechnung
+      int voltageRawVal = ((buf[6] << 8) + buf[5]) - 0xF000;
+      float voltageCalculated = voltageRawVal / 68;
 
       if (buf[3] == 0x00)
       {
@@ -516,8 +713,10 @@ void checkCan()
     }
     case 0x2F8:
     {
-      //Merken, wann das letzte mal diese Nachricht empfangen wurde.
-      previousCanDateTime = millis();
+      //
+      int hh,mm,ss;
+      rtcclock.get_time(&hh,&mm,&ss);
+
       //0: Stunden
       hours = buf[0];
       //1: Minuten
@@ -532,18 +731,19 @@ void checkCan()
       // #6 nach links shiften und 5 addieren
       year = (buf[6] << 8) + buf[5];
 
+      
+      //Uhrzeit weicht ab...
+      if(hours != hh || minutes != mm)
+      {
+        //...also wird sie gestellt
+        rtcclock.set_time(hours,minutes,seconds);
+        rtcclock.set_date(days,month,year);
+      }
+
+      buildTimestring();
       Serial.print("Datum & Uhrzeit:\t");
-      Serial.print(hours);
-      Serial.print(':');
-      Serial.print(minutes);
-      Serial.print(':');
-      Serial.print(seconds);
-      Serial.print('\t');
-      Serial.print(days);
-      Serial.print('.');
-      Serial.print(month);
-      Serial.print('.');
-      Serial.println(year);
+      Serial.print(timeString);
+      
       break;
     }
     default:
@@ -648,38 +848,8 @@ void stopOdroid()
 
 void buildTimestring()
 {
-  timeString = hours + ':' + minutes + ':' + seconds + ' ' + days + '.' + month + '.' + year;
-}
-
-void timeKeeper()
-{
-  unsigned long currentMillis = millis();
-  //Nur, wenn die letzte Aktualisierung über CAN mehr als eine Sekunde zurückliegt
-  if(currentMillis - previousCanDateTime > 1000)
-  {
-    if (hours == 23 && minutes == 59 && seconds == 59)
-    {
-      hours = 0;
-      minutes = 0;
-      seconds = 0;
-    }
-    if(minutes == 59 && seconds == 59)
-    {
-      hours++;
-      minutes = 0;
-      seconds = 0;
-    }
-    if(seconds == 59)
-    {
-      minutes++;
-      seconds = 0;
-      buildTimestring();
-      //Tick abgeschlossen
-      return;
-    }
-    buildTimestring();
-    //Sekunden erhöhen
-    seconds++;
-    
-  }
+  int hh,mm,ss,dow,day,month,year;
+  rtcclock.get_time(&hh,&mm,&ss);
+  rtcclock.get_date(&dow,&day,&month,&year);
+  sprintf(timeString,"%02d:%02d:%02d %02d.%02d.%4d",hh,mm,ss,day,month,year);
 }
