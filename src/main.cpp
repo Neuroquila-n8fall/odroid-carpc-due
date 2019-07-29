@@ -876,7 +876,7 @@ void checkIgnitionState()
   //Wenn der Status der Zündung sich verändert hat.
   if (ignitionOn != lastIgnitionState)
   {
-    
+
   }
   //Letzten Status merken.
   lastIgnitionState = ignitionOn;
@@ -967,10 +967,16 @@ void printCanMsgCsv(int canId, unsigned char *buffer, int len)
   //ABC FF  FF  FF  FF  FF  FF  FF  FF
   Serial.print(canId, HEX);
   Serial.println(';');
+  Serial.print(len);
+  Serial.print(';');
   for (int i = 0; i < len; i++)
   {
     Serial.print(buffer[i], HEX);
-    Serial.print(";");
+    //Semikolon nicht beim letzten Eintrag anhängen
+    if(i < len-1)
+    {
+      Serial.print(';');
+    }    
   }
   Serial.println();
 }
