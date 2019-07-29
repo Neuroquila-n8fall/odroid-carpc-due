@@ -393,6 +393,7 @@ void checkCan()
         {
           //Knopf wird gehalten
           Keyboard.press(MUSIC_FASTFORWARD_KEY);
+          MflButtonNextHold = true;
         }
         lastMflPress = currentMillis;
       }
@@ -412,6 +413,7 @@ void checkCan()
         {
           //Knopf wird gehalten
           Keyboard.press(MUSIC_FASTFORWARD_KEY);
+          MflButtonPrevHold = true;
         }
         lastMflPress = currentMillis;
         lastMflPress = currentMillis;
@@ -468,11 +470,15 @@ void checkCan()
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
     {
-      //Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
-      //In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
+      /*  
+          Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
+          In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
+          Das bedeutet, dass bei Lichteifnall von der Seite das Display abdunkelt und es unleserlich wird. Das kann sehr gut anhand der Armaturenbeleuchtung beobachtet werden.
+          Da es sich aber bei der Armaturenbeleuchtung um ein invertiertes Dot-Matrix LCD Display handelt, ist dies sogar unter direkter Sonneneinstrahlung perfekt lesbar.
+      */
       int lightValue = buf[0];
 
-      //Display auf volle Helligkeit einstellen
+      //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
       //Bei wenig Licht abdimmen
@@ -524,9 +530,23 @@ void checkCan()
       Serial.println();
       break;
     }
-    //Steuerung für Helligkeit der Beleuchtung
+    //Steuerung für Helligkeit der Armaturenbeleuchtung
     case 0x202:
     {
+      //254 = AUS
+      //Bereich: 0-253
+      //Ab und zu wird 254 einfach so geschickt...
+      Serial.print("Beleuchtung (Roh, Ctrl):");
+      int dimRawVal = buf[0];
+      int dimBrightness = map(dimRawVal,0,253,0,100);
+      if(buf[0] == 254)
+      {
+        Serial.println("AUS = 254");
+        break;
+      }
+      Serial.print(buf[0]);
+      Serial.print(',');
+      Serial.println(dimBrightness);
     }
     //Rückspiegel und dessen Lichtsensorik
     case 0x286:
@@ -792,12 +812,6 @@ void checkCan()
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
-      ///Alternative Rechnung
-      word correction = 0xF000;
-      word voltageRawVal = ((buf[6] << 8) + buf[5]) - correction;
-      float voltageCalculated = voltageRawVal / 68;
-      Serial.print("Batterie Rohwertberechnung:");
-      Serial.println(voltageCalculated);
 
       if (buf[3] == 0x00)
       {
@@ -862,20 +876,7 @@ void checkIgnitionState()
   //Wenn der Status der Zündung sich verändert hat.
   if (ignitionOn != lastIgnitionState)
   {
-
-    /*    DEAKTIVIERT, da jetzt über CAS gesteuert!
-     //Zündung ist jetzt AUS
-    if (ignitionOn == HIGH)
-    {
-      Serial.println("[checkIgnitionState] Zündung ist jetzt AUS");
-      stopOdroid();
-    }
-    else
-    {
-      Serial.println("[checkIgnitionState] Zündung ist jetzt AN --> Starten");
-      //Zündung ist jetzt AN
-      startOdroid();
-    } */
+    
   }
   //Letzten Status merken.
   lastIgnitionState = ignitionOn;
