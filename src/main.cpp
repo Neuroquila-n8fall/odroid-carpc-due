@@ -19,6 +19,8 @@ const int WIRE_ADDRESS = 0x01;
 const int SPI_CS_PIN = 10;
 //Pin für Display Helligkeit
 const int PIN_VU7A_BRIGHTNESS = 5;
+//Pin für Debug Switch
+const int PIN_DEBUG = 53;
 
 /*
 
@@ -44,6 +46,8 @@ const int ODROID_SHUTDOWN_HOLD_DELAY = 5100;
 */
 const byte MUSIC_NEXT_KEY = KEY_F1;
 const byte MUSIC_PREV_KEY = KEY_F2;
+const byte MUSIC_FASTFORWARD_KEY = KEY_F3;
+const byte MUSIC_REWIND_KEY = KEY_F4;
 const byte VOICE_BUTTON = KEY_F7;
 const byte PICKUP_BUTTON = KEY_F8;
 
@@ -64,6 +68,8 @@ bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
 
 bool startup = true; //Steuerung ist gerade angelaufen.
 
+bool debugMode = false; //Debugmodus aktiv?
+
 int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
 
 const int ODROID_STANDBY_HOLD_DELAY = 100;          //Button Press für Display und Sleep.
@@ -71,8 +77,6 @@ const unsigned long WAKEUP_WAIT_DELAY = 10000;      //10 Sekunden Wartezeit für
 const unsigned long STARTUP_WAIT_DELAY = 60000;     //Wartezeit für Start
 const unsigned long SHUTDOWN_WAIT_DELAY = 60000;    //Wartezeit für Herunterfahren
 unsigned long startPowerTransitionMillis = 0;       //Counter für den Aufweck- und Herunterfahrprozess
-const unsigned long CANBUS_INIT_WAIT_DELAY = 60000; //Delay für Canbus retries.
-unsigned long canbusInitWaitMillis = 0;             //Counter für Canbus init Throttling
 const unsigned long ODROID_STANDBY_DELAY = 5000;    //Wartzeit für Sleepfunktion
 
 const int serialBaud = 115200;
@@ -82,23 +86,37 @@ MCP_CAN CAN(SPI_CS_PIN); // Set CS pin
 int lastBrightness = 0; //zuletzt errechneter Helligkeitswert für Display.
 
 unsigned long lastMflPress = 0; //Debounce für MFL Knopfdruck
+bool MflButtonNextHold = false; //Ob der MFL Knopf "Next" gehalten wird
+bool MflButtonPrevHold = false; //Ob der MFL Knopf "Prev" gehalten wird
 
+
+//Stunden
 int hours = 0;
+//Minuten
 int minutes = 0;
+//Sekunden
 int seconds = 0;
+//Tag
 int days = 0;
+//Monat
 int month = 0;
+//Jahr
 int year = 0;
+//Langer Zeitstempel
 char timeStamp[20] = "00:00:00 00.00.0000";
+//Uhrzeit als Text
 char timeString[9] = "00:00:00";
+//Datum als Text
 char dateString[11] = "00.00.0000";
 
+//Zeit seit dem letzten Empfangen einer Uhrzeitnachricht über CAN
 unsigned long previousCanDateTime = 0;
 
+//Initialstatus der eingebauten LED
 int ledState = LOW;
-unsigned long previousOneSecondTick = 0;
 
-//RTC_clock rtcclock(XTAL);
+//Zeitstempel für Sekundentimer
+unsigned long previousOneSecondTick = 0;
 
 //Das muss eventuell nach dem Wakeup gesendet werden, damit der Controller anfängt Drehungspositionen zu schicken. Kann gut sein, dass das bereits automatisch passiert.
 unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
@@ -149,6 +167,8 @@ void checkCan();
 void buildtimeStamp();
 //CAN Nachrichten auf der Konsole ausgeben
 void printCanMsg(int canId, unsigned char *buffer, int len);
+//CAN Output als CSV
+void printCanMsgCsv(int canId, unsigned char *buffer, int len);
 //Mausrad simulieren, je nachdem in welche Richtung der iDrive Knopf gedreht wurde.
 void scrollScreen();
 //Uhrzeit pflegen. Ist ausschließlich dazu da die Uhrzeit voran schreiten zu lassen, wenn der Canbus inaktiv ist und keine Zeit vom Auto kommt.
@@ -170,7 +190,7 @@ void setup()
   pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid VOUT Pin als Rückmeldung ob der PC eingeschaltet ist
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
   pinMode(LED_BUILTIN,OUTPUT);                      //LED
-
+  pinMode(PIN_DEBUG, INPUT_PULLUP);                 //Debug Switch Pin
   pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT); //Display Helligkeitssteuerung
 
   //So lange versuchen das modul zu initialisieren, bis es klappt.
@@ -291,7 +311,6 @@ void loop()
     case ODROID_STOP:
       if (currentMillis - startPowerTransitionMillis >= SHUTDOWN_WAIT_DELAY)
       {
-
         Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -299,7 +318,6 @@ void loop()
     case ODROID_START:
       if (currentMillis - startPowerTransitionMillis >= STARTUP_WAIT_DELAY)
       {
-
         Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -307,7 +325,6 @@ void loop()
     case ODROID_STANDBY:
       if (currentMillis - startPowerTransitionMillis >= ODROID_STANDBY_DELAY)
       {
-
         Serial.println("[LOOP] Stand-by Wartezeit abgelaufen");
         pendingAction = NONE;
       }
@@ -332,15 +349,12 @@ void checkCan()
 
     unsigned int canId = CAN.getCanId();
 
-    /*     Serial.print("CAN ID: ");
-    Serial.println(canId, HEX);
-    for (int i = 0; i < len; i++) 
+    //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
+    if(debugMode)
     {
-      Serial.print(buf[i], HEX);
-      Serial.print("\t");
+      printCanMsgCsv(canId,buf,len);
     }
-    Serial.println(); */
-
+    
     switch (canId)
     {
     //MFL Knöpfe
@@ -349,13 +363,22 @@ void checkCan()
       //Kein Knopf gedrückt (alle 100ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
       {
+        //Knöpfe zurücksetzen
+        MflButtonNextHold = false;
+        MflButtonPrevHold = false;
+        Keyboard.release(MUSIC_NEXT_KEY);
+        Keyboard.release(MUSIC_PREV_KEY);
+        Keyboard.release(MUSIC_FASTFORWARD_KEY);
+        Keyboard.release(MUSIC_REWIND_KEY);
       }
       //Next
       if (buf[0] == 0xE0 && buf[1] == 0x0C)
       {
         /*
+          Sowohl beim Drücken als auch beim Loslassen wird eine Nachricht geschickt.
           Wenn der Knopf das erste Mal gedrückt wird, wird keine Aktion ausgeführt.
-          Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut kommt (Knopf losgelassen) wird reagiert.
+          Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut innerhalb einer Sekunde kommt (Knopf losgelassen) wird reagiert.
+          TODO: Es muss geprüft werden ob der Knopf immer wieder gesendet wird, wenn er gehalten wird.
         */
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
@@ -365,6 +388,11 @@ void checkCan()
           Keyboard.press(MUSIC_NEXT_KEY);
           delay(200);
           Keyboard.releaseAll();
+        }
+        else
+        {
+          //Knopf wird gehalten
+          Keyboard.press(MUSIC_FASTFORWARD_KEY);
         }
         lastMflPress = currentMillis;
       }
@@ -380,6 +408,12 @@ void checkCan()
           delay(200);
           Keyboard.releaseAll();
         }
+        else
+        {
+          //Knopf wird gehalten
+          Keyboard.press(MUSIC_FASTFORWARD_KEY);
+        }
+        lastMflPress = currentMillis;
         lastMflPress = currentMillis;
       }
       //Pickup Button
@@ -815,6 +849,9 @@ void checkPins()
   //Staus Odroid Vcc pin
   odroidRunning = !digitalRead(PIN_ODROID_POWER_INPUT);
 
+  //Status Debug-Pin
+  debugMode = !digitalRead(PIN_DEBUG);
+
   //Prüfe alle Faktoren für Start, Stopp oder Pause des Odroid.
   checkIgnitionState();
 }
@@ -919,6 +956,20 @@ void printCanMsg(int canId, unsigned char *buffer, int len)
   {
     Serial.print(buffer[i], HEX);
     Serial.print("\t");
+  }
+  Serial.println();
+}
+
+void printCanMsgCsv(int canId, unsigned char *buffer, int len)
+{
+  //OUTPUT:
+  //ABC FF  FF  FF  FF  FF  FF  FF  FF
+  Serial.print(canId, HEX);
+  Serial.println(';');
+  for (int i = 0; i < len; i++)
+  {
+    Serial.print(buffer[i], HEX);
+    Serial.print(";");
   }
   Serial.println();
 }
