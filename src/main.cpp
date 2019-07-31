@@ -418,7 +418,7 @@ void loop()
 
     default:
       //Keine Aktion aktiv.
-      
+
       //Sicherheitshalber zurücksetzen
       queuedAction = NONE;
       break;
@@ -525,7 +525,7 @@ void checkCan()
       if (buf[0] == 0x45)
       {
         Serial.println("[checkCan] Aufwecksignal wurde vom CAS gesendet.");
-        //Das CIC sendet nach der Nachricht vom CAS eine ANchricht an den Controller. Mangels CIC müssen wir das hier selbst erledigen.
+        //Das CIC sendet nach der Nachricht vom CAS eine Nachricht an den Controller. Mangels CIC müssen wir das hier selbst erledigen.
         CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
         //Wir schicken auch einfach mal herum, dass alle Geräte ihr Licht einschalten sollen.
         CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 2, DASHBOARD_LIGHTING_ON);
@@ -575,6 +575,10 @@ void checkCan()
           queuedAction = ODROID_START;
         }
         startOdroid();
+        //DEBUG ONLY: Init beim Aufsperren, Licht einschalten
+                        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
+                        CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 2, DASHBOARD_LIGHTING_ON);
+
       }
       //Schließen:  00DF40FF
       if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
@@ -676,6 +680,8 @@ void checkCan()
     case 0x286:
     {
     }
+
+
     //iDrive Controller
 
     //iDrive Controller: Drehung
