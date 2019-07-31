@@ -72,12 +72,12 @@ bool debugMode = false; //Debugmodus aktiv?
 
 int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
 
-const int ODROID_STANDBY_HOLD_DELAY = 100;          //Button Press für Display und Sleep.
-const unsigned long WAKEUP_WAIT_DELAY = 10000;      //10 Sekunden Wartezeit für Aufwecken
-const unsigned long STARTUP_WAIT_DELAY = 60000;     //Wartezeit für Start
-const unsigned long SHUTDOWN_WAIT_DELAY = 60000;    //Wartezeit für Herunterfahren
-unsigned long startPowerTransitionMillis = 0;       //Counter für den Aufweck- und Herunterfahrprozess
-const unsigned long ODROID_STANDBY_DELAY = 5000;    //Wartzeit für Sleepfunktion
+const int ODROID_STANDBY_HOLD_DELAY = 100;       //Button Press für Display und Sleep.
+const unsigned long WAKEUP_WAIT_DELAY = 10000;   //10 Sekunden Wartezeit für Aufwecken
+const unsigned long STARTUP_WAIT_DELAY = 60000;  //Wartezeit für Start
+const unsigned long SHUTDOWN_WAIT_DELAY = 60000; //Wartezeit für Herunterfahren
+unsigned long startPowerTransitionMillis = 0;    //Counter für den Aufweck- und Herunterfahrprozess
+const unsigned long ODROID_STANDBY_DELAY = 5000; //Wartzeit für Sleepfunktion
 
 const int serialBaud = 115200;
 
@@ -88,7 +88,6 @@ int lastBrightness = 0; //zuletzt errechneter Helligkeitswert für Display.
 unsigned long lastMflPress = 0; //Debounce für MFL Knopfdruck
 bool MflButtonNextHold = false; //Ob der MFL Knopf "Next" gehalten wird
 bool MflButtonPrevHold = false; //Ob der MFL Knopf "Prev" gehalten wird
-
 
 //Stunden
 int hours = 0;
@@ -136,29 +135,29 @@ bool iDriveInitSuccess = false;
 
 //Initialisierung des iDrive Controllers, damit dieser die Drehung übermittelt
 //Quelladresse für Init
-const char IDRIVE_CTRL_WAKEUP_ADDR = 0x273;
+const unsigned long IDRIVE_CTRL_WAKEUP_ADDR = 0x273;
 //Nachrichtenadresse erfolgreiche Initialisierung
-const char IDRIVE_CTRL_WAKEUP_RESPONSE_ADDR = 0x277;
+const unsigned long IDRIVE_CTRL_WAKEUP_RESPONSE_ADDR = 0x277;
 //Nachricht für Init
-unsigned char IDRIVE_CTRL_WAKEUP[8] = { 0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00 };
+unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
 //Keep-Alive Nachricht, damit der Controller aufgeweckt bleibt
 //Quelladresse für Keepalive
-const char IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
+const unsigned long IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
 //Nachricht für Keepalive
-unsigned char IDRIVE_CTRL_KEEPALIVE[8] = { 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+unsigned char IDRIVE_CTRL_KEEPALIVE[8] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 //Adresse des iDrive Controllers für Buttons
-const char IDRIVE_CTRL_BTN_ADDR = 0x267;
+const unsigned long IDRIVE_CTRL_BTN_ADDR = 0x267;
 //Adresse des iDrive Controllers für Rotation
-const char IDRIVE_CTRL_ROT_ADDR = 0x264;
+const unsigned long IDRIVE_CTRL_ROT_ADDR = 0x264;
 //Adresse für Status des iDrive Controllers. byte[5] = Counter, byte[6] Initialisiert: 1 = true, 6 = false
-const char IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
+const unsigned long IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
 
 //Adresse für Armaturenbeleuchtung
 //Nachricht: Länge 2
 //Byte 0: Intensität
 //Byte 1: 0x0
-//Mögliche Werte: 
+//Mögliche Werte:
 //Dimmwert    byte[0]
 //0           0
 //1           28
@@ -170,11 +169,18 @@ const char IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
 //7           197
 //8           225
 //9           253
-const char DASHBOARD_LIGHTING_ADDR = 0x202;
+const unsigned long DASHBOARD_LIGHTING_ADDR = 0x202;
 //Nachricht für Licht einschalten
-unsigned char DASHBOARD_LIGHTING_ON[2] = {0xFD,0x00};
+unsigned char DASHBOARD_LIGHTING_ON[2] = {0xFD, 0x00};
 //Nachricht für Licht auszuschalten
-unsigned char DASHBOARD_LIGHTING_OFF[2] = {0xFE,0x00};
+unsigned char DASHBOARD_LIGHTING_OFF[2] = {0xFE, 0x00};
+
+
+//        iDrive ENDE
+
+
+
+
 
 //Mögliche Aktionen
 enum PendingAction
@@ -188,6 +194,11 @@ enum PendingAction
 //Sofern diese nicht NONE ist, können keine weiteren Aktionen ausgeführt werden.
 //Dies soll doppelte Ausführungen von Start & Stop während der Hoch- und Herunterfahrphase des PCs verhindern
 PendingAction pendingAction = NONE;
+
+//Hier wird gespeichert, ob nach dem Ausführen einer Aktion eine weitere folgt
+//Beispiel: Das Auto wird aufgesperrt und innerhalb des Startup-Intervalls wieder zugesperrt. Der PC würde nun eingeschaltet bleiben.
+//Hier würde nun gespeichert werden, dass der PC wieder heruntergefahren werden soll, sobald der Timer abgelaufen ist.
+PendingAction queuedAction = NONE;
 
 //iDrive Stuff
 enum iDriveRotationDirection
@@ -244,9 +255,9 @@ void setup()
   pinMode(PIN_ODROID_POWER_BUTTON, OUTPUT);         //Opto 2 - Odroid Power Button
   pinMode(PIN_ODROID_POWER_INPUT, INPUT_PULLUP);    //Odroid VOUT Pin als Rückmeldung ob der PC eingeschaltet ist
   pinMode(PIN_ODROID_DISPLAY_POWER_BUTTON, OUTPUT); //Opto 3 - Display Power Button
-  pinMode(LED_BUILTIN,OUTPUT);                      //LED
+  pinMode(LED_BUILTIN, OUTPUT);                     //LED
   pinMode(PIN_DEBUG, INPUT_PULLUP);                 //Debug Switch Pin
-  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT); //Display Helligkeitssteuerung
+  pinMode(PIN_VU7A_BRIGHTNESS, OUTPUT);             //Display Helligkeitssteuerung
 
   //So lange versuchen das modul zu initialisieren, bis es klappt.
   while (CAN_OK != CAN.begin(CAN_100KBPS))
@@ -349,10 +360,10 @@ void loop()
   }
 
   //iDrive keepalive timer
-  if(iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500)
+  if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500)
   {
     //Keepalive senden
-    CAN.sendMsgBuf(IDRIVE_CTRL_KEEPALIVE_ADDR,0,8,IDRIVE_CTRL_KEEPALIVE);
+    CAN.sendMsgBuf(IDRIVE_CTRL_KEEPALIVE_ADDR, 0, 8, IDRIVE_CTRL_KEEPALIVE);
     previousIdrivePollTimestamp = currentMillis;
   }
 
@@ -376,6 +387,12 @@ void loop()
       {
         Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
+        //Wurde der Start vorgemerkt, ausführen und zurücksetzen
+        if(queuedAction == ODROID_START)
+        {
+          startOdroid();
+          queuedAction = NONE;
+        }
       }
       break;
     case ODROID_START:
@@ -383,6 +400,12 @@ void loop()
       {
         Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
+        //Wurde Stopp vorgemerkt, ausführen und zurücksetzen
+        if(queuedAction == ODROID_STOP)
+        {
+          stopOdroid();
+          queuedAction = NONE;
+        }
       }
       break;
     case ODROID_STANDBY:
@@ -395,6 +418,9 @@ void loop()
 
     default:
       //Keine Aktion aktiv.
+      
+      //Sicherheitshalber zurücksetzen
+      queuedAction = NONE;
       break;
     }
   }
@@ -407,18 +433,18 @@ void checkCan()
   unsigned long currentMillis = millis();
 
   if (CAN_MSGAVAIL == CAN.checkReceive())
-  {    
+  {
     previousCanMsgTimestamp = currentMillis;
     CAN.readMsgBuf(&len, buf);
 
     unsigned int canId = CAN.getCanId();
 
     //Alle CAN Nachrichten ausgeben, wenn debug aktiv.
-    if(debugMode)
+    if (debugMode)
     {
-      printCanMsgCsv(canId,buf,len);
+      printCanMsgCsv(canId, buf, len);
     }
-    
+
     switch (canId)
     {
     //MFL Knöpfe
@@ -497,12 +523,12 @@ void checkCan()
     {
       //Wakeup Signal vom CAS --> Alle Steuergeräte aufwecken
       if (buf[0] == 0x45)
-      {        
-        Serial.println("[checkCan] Aufwecksignal wurde gesendet.");
+      {
+        Serial.println("[checkCan] Aufwecksignal wurde vom CAS gesendet.");
         //Das CIC sendet nach der Nachricht vom CAS eine ANchricht an den Controller. Mangels CIC müssen wir das hier selbst erledigen.
-        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR,0,8,IDRIVE_CTRL_WAKEUP);
+        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
         //Wir schicken auch einfach mal herum, dass alle Geräte ihr Licht einschalten sollen.
-        CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR,0,2,DASHBOARD_LIGHTING_ON);
+        CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 2, DASHBOARD_LIGHTING_ON);
       }
       break;
     }
@@ -525,14 +551,14 @@ void checkCan()
       if (buf[6] == 6)
       {
         //Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
-        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR,0,8,IDRIVE_CTRL_WAKEUP);
+        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
         Serial.println("Controller ist nicht initialisiert.");
       }
       else
       {
         Serial.println("Controller ist bereit.");
-      }    
-      
+      }
+
       break;
     }
     //CAS: Schlüssel Buttons
@@ -543,6 +569,11 @@ void checkCan()
       {
 
         Serial.print("START\n");
+        //Prüfen, ob der PC noch im Begriff ist herunter zu fahren
+        if(pendingAction == ODROID_STOP)
+        {
+          queuedAction = ODROID_START;
+        }
         startOdroid();
       }
       //Schließen:  00DF40FF
@@ -550,6 +581,11 @@ void checkCan()
       {
 
         Serial.print("STOP\n");
+        //Prüfen, ob der PC noch im Begriff ist hochzufahren
+        if(pendingAction == ODROID_START)
+        {
+          queuedAction = ODROID_STOP;
+        }
         stopOdroid();
       }
       //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
@@ -626,8 +662,8 @@ void checkCan()
       //Ab und zu wird 254 einfach so geschickt, wenn 0 vorher aktiv war...warum auch immer
       Serial.print("Beleuchtung (Roh, Ctrl):");
       int dimRawVal = buf[0];
-      int dimBrightness = map(dimRawVal,0,253,0,100);
-      if(buf[0] == 254)
+      int dimBrightness = map(dimRawVal, 0, 253, 0, 100);
+      if (buf[0] == 254)
       {
         Serial.println("AUS = 254");
         break;
@@ -944,7 +980,7 @@ void checkCan()
   scrollScreen();
 
   //Timeout für Canbus.
-  if(currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT)
+  if (currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT)
   {
     //Canbus wurde heruntergefahren. Es werden keinerlei Nachrichten mehr seit 30 Sekunden ausgetauscht.
     //Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
@@ -973,7 +1009,6 @@ void checkIgnitionState()
   //Wenn der Status der Zündung sich verändert hat.
   if (ignitionOn != lastIgnitionState)
   {
-
   }
   //Letzten Status merken.
   lastIgnitionState = ignitionOn;
@@ -1070,10 +1105,10 @@ void printCanMsgCsv(int canId, unsigned char *buffer, int len)
   {
     Serial.print(buffer[i], HEX);
     //Semikolon nicht beim letzten Eintrag anhängen
-    if(i < len-1)
+    if (i < len - 1)
     {
       Serial.print(';');
-    }    
+    }
   }
   Serial.println();
 }
