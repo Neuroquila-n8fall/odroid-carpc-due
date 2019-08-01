@@ -121,6 +121,8 @@ unsigned long previousOneSecondTick = 0;
 const int CAN_TIMEOUT = 30000;
 //Zeitstempel der zuletzt empfangenen CAN-Nachricht
 unsigned long previousCanMsgTimestamp = 0;
+//CAS Debounce Timeout
+const int CAS_DEBOUNCE_TIMEOUT = 1000;
 
 //    iDrive
 
@@ -128,30 +130,34 @@ unsigned long previousCanMsgTimestamp = 0;
 unsigned long previousIdrivePollTimestamp = 0;
 //Keepalive Intervall
 const int IDRIVE_KEEPALIVE_INTERVAL = 500;
+//Init Timeout
+const int IDRIVE_INIT_TIMEOUT = 750;
+//Init Timer
+unsigned long previousIdriveInitTimestamp = 0;
 //Initialisierung erfolgreich
 bool iDriveInitSuccess = false;
 
 //CAN Nachrichten
-
+unsigned long previousCasMessageTimestamp = 0;
 //Initialisierung des iDrive Controllers, damit dieser die Drehung übermittelt
 //Quelladresse für Init
-const unsigned long IDRIVE_CTRL_WAKEUP_ADDR = 0x273;
+const int IDRIVE_CTRL_INIT_ADDR = 0x273;
 //Nachrichtenadresse erfolgreiche Initialisierung
-const unsigned long IDRIVE_CTRL_WAKEUP_RESPONSE_ADDR = 0x277;
+const int IDRIVE_CTRL_INIT_RESPONSE_ADDR = 0x277;
 //Nachricht für Init
-unsigned char IDRIVE_CTRL_WAKEUP[8] = {0x1D, 0xE1, 0x00, 0xF0, 0xFF, 0x7F, 0xDE, 0x00};
+unsigned char IDRIVE_CTRL_INIT[8] = {0x1D, 0xE1, 0x0, 0xF0, 0xFF, 0x7F, 0xDE, 0x4};
 //Keep-Alive Nachricht, damit der Controller aufgeweckt bleibt
 //Quelladresse für Keepalive
-const unsigned long IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
+const int IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
 //Nachricht für Keepalive
 unsigned char IDRIVE_CTRL_KEEPALIVE[8] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
 //Adresse des iDrive Controllers für Buttons
-const unsigned long IDRIVE_CTRL_BTN_ADDR = 0x267;
+const int IDRIVE_CTRL_BTN_ADDR = 0x267;
 //Adresse des iDrive Controllers für Rotation
-const unsigned long IDRIVE_CTRL_ROT_ADDR = 0x264;
+const int IDRIVE_CTRL_ROT_ADDR = 0x264;
 //Adresse für Status des iDrive Controllers. byte[5] = Counter, byte[6] Initialisiert: 1 = true, 6 = false
-const unsigned long IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
+const int IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
 
 //Adresse für Armaturenbeleuchtung
 //Nachricht: Länge 2
@@ -175,12 +181,7 @@ unsigned char DASHBOARD_LIGHTING_ON[2] = {0xFD, 0x00};
 //Nachricht für Licht auszuschalten
 unsigned char DASHBOARD_LIGHTING_OFF[2] = {0xFE, 0x00};
 
-
 //        iDrive ENDE
-
-
-
-
 
 //Mögliche Aktionen
 enum PendingAction
@@ -360,7 +361,8 @@ void loop()
   }
 
   //iDrive keepalive timer
-  if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500)
+  //Nur Ausführen, wenn der Controller erfolgreich initialisiert wurde
+  if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500 && currentMillis - previousIdriveInitTimestamp >= IDRIVE_INIT_TIMEOUT)
   {
     //Keepalive senden
     CAN.sendMsgBuf(IDRIVE_CTRL_KEEPALIVE_ADDR, 0, 8, IDRIVE_CTRL_KEEPALIVE);
@@ -388,7 +390,7 @@ void loop()
         Serial.println("[LOOP] Shutdown Wartezeit abgelaufen");
         pendingAction = NONE;
         //Wurde der Start vorgemerkt, ausführen und zurücksetzen
-        if(queuedAction == ODROID_START)
+        if (queuedAction == ODROID_START)
         {
           startOdroid();
           queuedAction = NONE;
@@ -401,7 +403,7 @@ void loop()
         Serial.println("[LOOP] Start Wartezeit abgelaufen");
         pendingAction = NONE;
         //Wurde Stopp vorgemerkt, ausführen und zurücksetzen
-        if(queuedAction == ODROID_STOP)
+        if (queuedAction == ODROID_STOP)
         {
           stopOdroid();
           queuedAction = NONE;
@@ -473,8 +475,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-
-          Serial.print("NEXT\n");
+          Serial.println("NEXT");
           Keyboard.press(MUSIC_NEXT_KEY);
           delay(200);
           Keyboard.releaseAll();
@@ -493,8 +494,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-
-          Serial.print("PREV\n");
+          Serial.println("PREV");
           Keyboard.press(MUSIC_PREV_KEY);
           delay(200);
           Keyboard.releaseAll();
@@ -522,24 +522,24 @@ void checkCan()
     case 0x130:
     {
       //Wakeup Signal vom CAS --> Alle Steuergeräte aufwecken
+      //Wird alle 100ms geschickt
       if (buf[0] == 0x45)
       {
-        Serial.println("[checkCan] Aufwecksignal wurde vom CAS gesendet.");
-        //Das CIC sendet nach der Nachricht vom CAS eine Nachricht an den Controller. Mangels CIC müssen wir das hier selbst erledigen.
-        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
-        //Wir schicken auch einfach mal herum, dass alle Geräte ihr Licht einschalten sollen.
-        CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 2, DASHBOARD_LIGHTING_ON);
+      }
+      //Wenn der Schlüssel im Fach ist, ist der Wert größer 0x0
+      if (buf[0] > 0)
+      {
       }
       break;
     }
-      //CIC
+    //CIC
     case 0x273:
     {
       Serial.print("CIC\t");
       printCanMsg(canId, buf, len);
       break;
     }
-    case IDRIVE_CTRL_WAKEUP_RESPONSE_ADDR:
+    case IDRIVE_CTRL_INIT_RESPONSE_ADDR:
     {
       Serial.println("[checkCan] iDrive Controller ist aktiv");
       iDriveInitSuccess = true;
@@ -551,7 +551,7 @@ void checkCan()
       if (buf[6] == 6)
       {
         //Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
-        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
+        CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
         Serial.println("Controller ist nicht initialisiert.");
       }
       else
@@ -561,39 +561,47 @@ void checkCan()
 
       break;
     }
+    case IDRIVE_CTRL_KEEPALIVE_ADDR:
+    {
+      Serial.print("[checkCan] 0x501 (Keepalive): ");
+      printCanMsg(canId, buf, len);
+      break;
+    }
     //CAS: Schlüssel Buttons
     case 0x23A:
-
-      //Öffnen:     00CF01FF
-      if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
+      //Debounce: Befehle werden erst wieder verarbeitet, wenn der Timeout abgelaufen ist.
+      if (currentMillis - previousCasMessageTimestamp > CAS_DEBOUNCE_TIMEOUT)
       {
-
-        Serial.print("START\n");
-        //Prüfen, ob der PC noch im Begriff ist herunter zu fahren
-        if(pendingAction == ODROID_STOP)
+        previousCasMessageTimestamp = currentMillis;
+        //Öffnen:     00CF01FF
+        if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x01 && buf[3] == 0x60)
         {
-          queuedAction = ODROID_START;
+          //Prüfen, ob der PC noch im Begriff ist herunter zu fahren
+          if (pendingAction == ODROID_STOP)
+          {
+            queuedAction = ODROID_START;
+            Serial.println("[checkCan] PC wird nach dem Herunterfahren wieder gestartet.");
+          }
+          startOdroid();
+          //Controller initialisieren.
+          CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
+          previousIdriveInitTimestamp = currentMillis;
+          //Zur Kontrolle die Instrumentenbeleuchtung einschalten.
+          CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 8, DASHBOARD_LIGHTING_ON);
         }
-        startOdroid();
-        //DEBUG ONLY: Init beim Aufsperren, Licht einschalten
-                        CAN.sendMsgBuf(IDRIVE_CTRL_WAKEUP_ADDR, 0, 8, IDRIVE_CTRL_WAKEUP);
-                        CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 2, DASHBOARD_LIGHTING_ON);
-
-      }
-      //Schließen:  00DF40FF
-      if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
-      {
-
-        Serial.print("STOP\n");
-        //Prüfen, ob der PC noch im Begriff ist hochzufahren
-        if(pendingAction == ODROID_START)
+        //Schließen:  00DF40FF
+        if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
         {
-          queuedAction = ODROID_STOP;
+          //Prüfen, ob der PC noch im Begriff ist hochzufahren
+          if (pendingAction == ODROID_START)
+          {
+            queuedAction = ODROID_STOP;
+            Serial.println("[checkCan] PC wird nach dem Starten wieder heruntergefahren.");
+          }
+          stopOdroid();
         }
-        stopOdroid();
+        //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
       }
-      //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
-
       break;
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
@@ -680,7 +688,6 @@ void checkCan()
     case 0x286:
     {
     }
-
 
     //iDrive Controller
 
@@ -1104,7 +1111,7 @@ void printCanMsgCsv(int canId, unsigned char *buffer, int len)
   //OUTPUT:
   //ABC FF  FF  FF  FF  FF  FF  FF  FF
   Serial.print(canId, HEX);
-  Serial.println(';');
+  Serial.print(';');
   Serial.print(len);
   Serial.print(';');
   for (int i = 0; i < len; i++)
