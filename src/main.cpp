@@ -475,7 +475,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.println("NEXT");
+          Serial.println("[checkCan] Music NEXT");
           Keyboard.press(MUSIC_NEXT_KEY);
           delay(200);
           Keyboard.releaseAll();
@@ -485,6 +485,7 @@ void checkCan()
           //Knopf wird gehalten
           Keyboard.press(MUSIC_FASTFORWARD_KEY);
           MflButtonNextHold = true;
+          Serial.println("[checkCan] Music FASTFORWARD");
         }
         lastMflPress = currentMillis;
       }
@@ -494,7 +495,7 @@ void checkCan()
         //Der Knopf wurde innerhalb einer Sekunde losgelassen
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.println("PREV");
+          Serial.println("[checkCan] Music PREV");
           Keyboard.press(MUSIC_PREV_KEY);
           delay(200);
           Keyboard.releaseAll();
@@ -502,10 +503,10 @@ void checkCan()
         else
         {
           //Knopf wird gehalten
-          Keyboard.press(MUSIC_FASTFORWARD_KEY);
+          Keyboard.press(MUSIC_REWIND_KEY);
           MflButtonPrevHold = true;
+          Serial.println("[checkCan] Music REWIND");
         }
-        lastMflPress = currentMillis;
         lastMflPress = currentMillis;
       }
       //Pickup Button
@@ -694,6 +695,7 @@ void checkCan()
     //iDrive Controller: Drehung
     case 0x264:
     {
+
       //Byte 0 beinhaltet den counter
       //Byte 1 zählt je nach Drehrichtung von 0 nach 254 hoch
       //   Ich vermute aktuell mal, dass wenn 254 erreicht wurde der Wert wieder auf 0 zurückspringt
@@ -737,11 +739,36 @@ void checkCan()
       {
         iDriveRotChanged = false;
       }
+      Serial.print("[checkCan] iDrive Rotation: ");
+      if (iDriveRotChanged)
+      {
+        switch (iDriveRotDir)
+        {
+        case ROTATION_LEFT:
+        {
+          Serial.println("Links");
+          break;
+        }
+        case ROTATION_RIGHT:
+        {
+          Serial.println("Rechts");
+          break;
+        }
+        default:
+          break;
+        }
+      }
+      else
+      {
+        Serial.println("Keine");
+      }
       break;
     }
     //Knöpfe und Joystick
     case 0x267:
     {
+      Serial.print("[checkCan] iDrive Knöpfe:");
+      printCanMsg(canId, buf, len);
       if (buf[4] != 0xDD)
       {
         switch (buf[5])
