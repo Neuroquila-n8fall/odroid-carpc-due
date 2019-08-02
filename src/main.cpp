@@ -139,6 +139,7 @@ bool iDriveInitSuccess = false;
 
 //CAN Nachrichten
 unsigned long previousCasMessageTimestamp = 0;
+bool canbusEnabled = false;
 //Initialisierung des iDrive Controllers, damit dieser die Drehung übermittelt
 //Quelladresse für Init
 const int IDRIVE_CTRL_INIT_ADDR = 0x273;
@@ -437,6 +438,7 @@ void checkCan()
   if (CAN_MSGAVAIL == CAN.checkReceive())
   {
     previousCanMsgTimestamp = currentMillis;
+    canbusEnabled = true;
     CAN.readMsgBuf(&len, buf);
 
     unsigned int canId = CAN.getCanId();
@@ -688,6 +690,7 @@ void checkCan()
     //Rückspiegel und dessen Lichtsensorik
     case 0x286:
     {
+      break;
     }
 
     //iDrive Controller
@@ -695,73 +698,17 @@ void checkCan()
     //iDrive Controller: Drehung
     case 0x264:
     {
+      //Byte 2 beinhaltet den counter
+      //Byte 3 drehrichtung als counter oder fixwert?
 
-      //Byte 0 beinhaltet den counter
-      //Byte 1 zählt je nach Drehrichtung von 0 nach 254 hoch
-      //   Ich vermute aktuell mal, dass wenn 254 erreicht wurde der Wert wieder auf 0 zurückspringt
+      //-->> Muss getestet werden.
 
       //Grundsätzliche bestimmung ob der Knopf überhaupt mal gedreht wurde
-      iDriveRotChanged = iDriveRotCountLast != buf[0];
+      iDriveRotChanged = iDriveRotCountLast != buf[2];
 
-      //Etwas hat sich an der Drehrichtung geändert
-      if (iDriveRotLast != buf[1])
-      {
-        iDriveRotChanged = true;
-        //Sonderfälle bearbeiten
-        //Knopf war am logischen Anschlag und springt jetzt wieder auf 0 zurück.
-        if (iDriveRotLast == 254 && buf[1] == 0)
-        {
-          iDriveRotDir = ROTATION_RIGHT;
-          iDriveRotLast = buf[1];
-          break;
-        }
-        //Umgekehrte Drehrichtung
-        if (iDriveRotLast == 0 && buf[1] == 254)
-        {
-          iDriveRotDir = ROTATION_LEFT;
-          iDriveRotLast = buf[1];
-          break;
-        }
-        //Wenn der zuletzt gespeicherte Wert größer als der neue ist, dann wurde der Knopf links gedreht
-        //Umgekehrt wurde er Rechts gedreht
-        if (iDriveRotLast > buf[1])
-        {
-          iDriveRotDir = ROTATION_LEFT;
-        }
-        else
-        {
-          iDriveRotDir = ROTATION_RIGHT;
-        }
-        //Wert speichern
-        iDriveRotLast = buf[1];
-      }
-      else
-      {
-        iDriveRotChanged = false;
-      }
-      Serial.print("[checkCan] iDrive Rotation: ");
-      if (iDriveRotChanged)
-      {
-        switch (iDriveRotDir)
-        {
-        case ROTATION_LEFT:
-        {
-          Serial.println("Links");
-          break;
-        }
-        case ROTATION_RIGHT:
-        {
-          Serial.println("Rechts");
-          break;
-        }
-        default:
-          break;
-        }
-      }
-      else
-      {
-        Serial.println("Keine");
-      }
+      Serial.print("[checkCan] iDrive Drehung:");
+      printCanMsg(canId,buf,len);
+
       break;
     }
     //Knöpfe und Joystick
@@ -942,7 +889,7 @@ void checkCan()
     //PDC
     case 0x1C2:
     {
-      //Byte 0~3 = Hinten
+/*       //Byte 0~3 = Hinten
       //Byte 4~7 = Vorne
       //Angaben in cm von 0 - 255
       //Heck:
@@ -955,7 +902,7 @@ void checkCan()
       int frontInnerLeft = buf[5];
       int frontInnerRight = buf[6];
       int frontOuterRight = buf[7];
-
+ */
       break;
     }
     //Rückwärtsgang
@@ -1020,11 +967,12 @@ void checkCan()
   scrollScreen();
 
   //Timeout für Canbus.
-  if (currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT)
+  if (currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT && canbusEnabled == true)
   {
     //Canbus wurde heruntergefahren. Es werden keinerlei Nachrichten mehr seit 30 Sekunden ausgetauscht.
     //Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
     iDriveInitSuccess = false;
+    canbusEnabled = false;
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
   }
 }
