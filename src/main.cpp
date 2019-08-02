@@ -730,6 +730,7 @@ void checkCan()
             break;
           //Lang gedrückt
           case 0x02:
+          //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
             break;
@@ -745,11 +746,19 @@ void checkCan()
           {
           //Kurz gedrückt
           case 0x01:
+          //Zurück
             Keyboard.press(KEY_LEFT_CTRL);
             Keyboard.press(KEY_BACKSPACE);
             break;
           //Lang gedrückt
           case 0x02:
+          //Letzte Apps durchblättern (alt-tab zweimal tippen)
+          Keyboard.press(KEY_LEFT_ALT);
+          Keyboard.press(KEY_TAB);
+          Keyboard.releaseAll();
+          Keyboard.press(KEY_LEFT_ALT);
+          Keyboard.press(KEY_TAB);
+          Keyboard.releaseAll();
             break;
           //Losgelassen
           case 0x00:
@@ -827,6 +836,7 @@ void checkCan()
           {
           //Kurz gedrückt
           case 0x01:
+
             break;
           //Lang gedrückt
           case 0x02:
