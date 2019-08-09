@@ -207,7 +207,7 @@ enum iDriveRotationDirection
 {
   ROTATION_RIGHT,
   ROTATION_LEFT,
-  UNCHANGED
+  ROTATION_NONE
 };
 
 //iDrive Knopf gedreht?
@@ -217,7 +217,7 @@ int iDriveRotLast = 0;
 //Drehungs-counter
 int iDriveRotCountLast = 0;
 //Drehrichtung
-iDriveRotationDirection iDriveRotDir = UNCHANGED;
+iDriveRotationDirection iDriveRotDir = ROTATION_NONE;
 
 //Status der Zündung abrufen und entsprechende Aktionen auslösen
 void checkIgnitionState();
@@ -699,12 +699,37 @@ void checkCan()
     case 0x264:
     {
       //Byte 2 beinhaltet den counter
-      //Byte 3 drehrichtung als counter oder fixwert?
+      //Byte 3 Counter Geschwindigkeit der Drehrichtung: 
+      //        Startet bei 0 bei Drehung im Uhrzeigersinn, wird von 0xFE heruntergezählt bei entgegengesetzter Richtung.
+      //Byte 4 0x80 für Drehung im Uhrzeigersinn
+      //       0x7F für Drehung gegen den Uhrzeigersinn
+      //        Alle anderen Werte: Keine Drehung
 
-      //-->> Muss getestet werden.
-
-      //Grundsätzliche bestimmung ob der Knopf überhaupt mal gedreht wurde
+      //Grundsätzliche Bestimmung ob der Knopf überhaupt mal gedreht wurde
       iDriveRotChanged = iDriveRotCountLast != buf[2];
+
+      switch(buf[4])
+      {
+        case 0x7F:
+        {
+          //Rechtsdrehung
+          iDriveRotDir = ROTATION_RIGHT;
+          break;
+        }        
+        case 0x80:
+        {
+          //Linksdrehung
+          iDriveRotDir = ROTATION_LEFT;
+          break;
+        }     
+        default:
+        {
+          iDriveRotDir = ROTATION_NONE;
+          break;
+        }   
+      }
+
+      
 
       Serial.print("[checkCan] iDrive Drehung:");
       printCanMsg(canId,buf,len);
