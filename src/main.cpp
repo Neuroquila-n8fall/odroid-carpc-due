@@ -363,12 +363,12 @@ void loop()
 
   //iDrive keepalive timer
   //Nur Ausführen, wenn der Controller erfolgreich initialisiert wurde
-  if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500 && currentMillis - previousIdriveInitTimestamp >= IDRIVE_INIT_TIMEOUT)
+/*   if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500 && currentMillis - previousIdriveInitTimestamp >= IDRIVE_INIT_TIMEOUT)
   {
     //Keepalive senden
     CAN.sendMsgBuf(IDRIVE_CTRL_KEEPALIVE_ADDR, 0, 8, IDRIVE_CTRL_KEEPALIVE);
     previousIdrivePollTimestamp = currentMillis;
-  }
+  } */
 
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
 
@@ -532,6 +532,10 @@ void checkCan()
       //Wenn der Schlüssel im Fach ist, ist der Wert größer 0x0
       if (buf[0] > 0)
       {
+        if(!iDriveInitSuccess)
+        {
+          CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
+        }
       }
       break;
     }
@@ -550,18 +554,21 @@ void checkCan()
     }
     case IDRIVE_CTRL_STATUS_ADDR:
     {
+      printCanMsg(canId,buf,len);
       Serial.print("[checkCan] iDrive Controller Statusmeldung: ");
-      if (buf[6] == 6)
+      if (buf[4] == 6)
       {
         //Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
         CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
+        iDriveInitSuccess = false;
         Serial.println("Controller ist nicht initialisiert.");
       }
       else
       {
         Serial.println("Controller ist bereit.");
+        iDriveInitSuccess = true;
       }
-
+      
       break;
     }
     case IDRIVE_CTRL_KEEPALIVE_ADDR:
@@ -1146,7 +1153,7 @@ void scrollScreen()
   {
     Mouse.move(0, 0, -1);
   }
-  if (iDriveRotDir == UNCHANGED)
+  if (iDriveRotDir == ROTATION_NONE)
   {
     Mouse.move(0, 0, 0);
   }
