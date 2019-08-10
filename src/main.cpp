@@ -159,6 +159,10 @@ const int IDRIVE_CTRL_BTN_ADDR = 0x267;
 const int IDRIVE_CTRL_ROT_ADDR = 0x264;
 //Adresse für Status des iDrive Controllers. byte[5] = Counter, byte[6] Initialisiert: 1 = true, 6 = false
 const int IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
+//TRUE, wenn Initialwert für Drehknopf am iDrive bereits errechnet wurde
+bool RotaryInitPositionSet = false;
+//Zähler für Drehung des Drehknopfes
+unsigned int rotaryposition = 0;
 
 //Adresse für Armaturenbeleuchtung
 //Nachricht: Länge 2
@@ -361,15 +365,6 @@ void loop()
     buildtimeStamp();
   }
 
-  //iDrive keepalive timer
-  //Nur Ausführen, wenn der Controller erfolgreich initialisiert wurde
-/*   if (iDriveInitSuccess && currentMillis - previousIdrivePollTimestamp >= 500 && currentMillis - previousIdriveInitTimestamp >= IDRIVE_INIT_TIMEOUT)
-  {
-    //Keepalive senden
-    CAN.sendMsgBuf(IDRIVE_CTRL_KEEPALIVE_ADDR, 0, 8, IDRIVE_CTRL_KEEPALIVE);
-    previousIdrivePollTimestamp = currentMillis;
-  } */
-
   bool anyPendingActions = odroidStartRequested || odroidShutdownRequested || odroidPauseRequested;
 
   //Allgemeine Funktionen. Nur ausführen, wenn Zyklus erreicht wurde und keine ausstehenden Aktionen laufen, die ein zeitkritisches Verändern der Ausgänge beinhalten.
@@ -532,7 +527,7 @@ void checkCan()
       //Wenn der Schlüssel im Fach ist, ist der Wert größer 0x0
       if (buf[0] > 0)
       {
-        if(!iDriveInitSuccess)
+        if (!iDriveInitSuccess)
         {
           CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
         }
@@ -554,7 +549,7 @@ void checkCan()
     }
     case IDRIVE_CTRL_STATUS_ADDR:
     {
-      printCanMsg(canId,buf,len);
+      printCanMsg(canId, buf, len);
       Serial.print("[checkCan] iDrive Controller Statusmeldung: ");
       if (buf[4] == 6)
       {
@@ -568,7 +563,7 @@ void checkCan()
         Serial.println("Controller ist bereit.");
         iDriveInitSuccess = true;
       }
-      
+
       break;
     }
     case IDRIVE_CTRL_KEEPALIVE_ADDR:
@@ -706,44 +701,60 @@ void checkCan()
     case 0x264:
     {
       //Byte 2 beinhaltet den counter
-      //Byte 3 Counter Geschwindigkeit der Drehrichtung: 
+      //Byte 3 Counter Geschwindigkeit der Drehrichtung:
       //        Startet bei 0 bei Drehung im Uhrzeigersinn, wird von 0xFE heruntergezählt bei entgegengesetzter Richtung.
       //Byte 4 0x80 für Drehung im Uhrzeigersinn
       //       0x7F für Drehung gegen den Uhrzeigersinn
       //        Alle anderen Werte: Keine Drehung
 
-      //Grundsätzliche Bestimmung ob der Knopf überhaupt mal gedreht wurde
-      iDriveRotChanged = iDriveRotCountLast != buf[2];
+      byte rotarystepa = buf[3];
+      byte rotarystepb = buf[4];
+      unsigned int newpos = (((unsigned int)rotarystepa) + ((unsigned int)rotarystepb) * 0x100);
 
-      switch(buf[4])
+      if (!(RotaryInitPositionSet))
       {
+        switch (rotarystepb)
+        {
         case 0x7F:
-        {
-          //Rechtsdrehung
-          iDriveRotDir = ROTATION_RIGHT;
+          rotaryposition = (newpos + 1);
           break;
-        }        
         case 0x80:
-        {
-          //Linksdrehung
-          iDriveRotDir = ROTATION_LEFT;
+          rotaryposition = (newpos - 1);
           break;
-        }     
         default:
-        {
-          iDriveRotDir = ROTATION_NONE;
+          rotaryposition = newpos;
           break;
-        }   
+        }
+        RotaryInitPositionSet = true;
       }
 
-      
+      while (rotaryposition < newpos)
+      {
+        if (!iDriveInitSuccess)
+        {
+          iDriveRotDir = ROTATION_RIGHT;
+        }
+        rotaryposition++;
+      }
 
-      Serial.print("[checkCan] iDrive Drehung:");
-      printCanMsg(canId,buf,len);
+      while (rotaryposition > newpos)
+      {
+        if (!iDriveInitSuccess)
+        {
+          iDriveRotDir = ROTATION_LEFT;
+        }
+        rotaryposition--;
+      }
 
       break;
     }
-    //Knöpfe und Joystick
+      //Knöpfe und Joystick
+
+      //TODO: Debounce für Knöpfe:
+      //Knopf wird auch dauerhaft gesendet, solange er gedrückt ist und auch wenn er gedrückt gehalten wird und buf[3] auf 0x02 wechselt!
+      //--> buf[3] beobachten:
+      //Wenn dieser innerhalb einer gewissen Zeit immernoch auftaucht, bevor RELEASE 0x00 gesendet wird und dann auf 0x02 umspringt, wurde der knopf gehalten.
+
     case 0x267:
     {
       Serial.print("[checkCan] iDrive Knöpfe:");
@@ -762,7 +773,7 @@ void checkCan()
             break;
           //Lang gedrückt
           case 0x02:
-          //Zuletzt geöffnete Apps anzeigen
+            //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
             break;
@@ -778,19 +789,19 @@ void checkCan()
           {
           //Kurz gedrückt
           case 0x01:
-          //Zurück
+            //Zurück
             Keyboard.press(KEY_LEFT_CTRL);
             Keyboard.press(KEY_BACKSPACE);
             break;
           //Lang gedrückt
           case 0x02:
-          //Letzte Apps durchblättern (alt-tab zweimal tippen)
-          Keyboard.press(KEY_LEFT_ALT);
-          Keyboard.press(KEY_TAB);
-          Keyboard.releaseAll();
-          Keyboard.press(KEY_LEFT_ALT);
-          Keyboard.press(KEY_TAB);
-          Keyboard.releaseAll();
+            //Letzte Apps durchblättern (alt-tab zweimal tippen)
+            Keyboard.press(KEY_LEFT_ALT);
+            Keyboard.press(KEY_TAB);
+            Keyboard.releaseAll();
+            Keyboard.press(KEY_LEFT_ALT);
+            Keyboard.press(KEY_TAB);
+            Keyboard.releaseAll();
             break;
           //Losgelassen
           case 0x00:
@@ -931,7 +942,7 @@ void checkCan()
     //PDC
     case 0x1C2:
     {
-/*       //Byte 0~3 = Hinten
+      /*       //Byte 0~3 = Hinten
       //Byte 4~7 = Vorne
       //Angaben in cm von 0 - 255
       //Heck:
