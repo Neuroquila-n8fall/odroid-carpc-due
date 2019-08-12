@@ -4,6 +4,10 @@
 #include <mcp_can.h>
 #include <Keyboard.h>
 #include <Mouse.h>
+/*
+  Projektbezogene Header
+*/
+#include <k-can.h>
 
 //Opto 2 - Zündung Aktiv
 const int PIN_IGNITION_INPUT = 6;
@@ -79,15 +83,14 @@ const unsigned long SHUTDOWN_WAIT_DELAY = 60000; //Wartezeit für Herunterfahren
 unsigned long startPowerTransitionMillis = 0;    //Counter für den Aufweck- und Herunterfahrprozess
 const unsigned long ODROID_STANDBY_DELAY = 5000; //Wartzeit für Sleepfunktion
 
+//Geschwindigkeit der Seriellen Schnittstelle "Serial"
 const int serialBaud = 115200;
 
-MCP_CAN CAN(SPI_CS_PIN); // Set CS pin
+//CAN Modul initialisieren
+MCP_CAN CAN(SPI_CS_PIN); 
 
-int lastBrightness = 0; //zuletzt errechneter Helligkeitswert für Display.
-
-unsigned long lastMflPress = 0; //Debounce für MFL Knopfdruck
-bool MflButtonNextHold = false; //Ob der MFL Knopf "Next" gehalten wird
-bool MflButtonPrevHold = false; //Ob der MFL Knopf "Prev" gehalten wird
+//zuletzt errechneter Helligkeitswert für Display.
+int lastBrightness = 0; 
 
 //Stunden
 int hours = 0;
@@ -108,85 +111,11 @@ char timeString[9] = "00:00:00";
 //Datum als Text
 char dateString[11] = "00.00.0000";
 
-//Zeit seit dem letzten Empfangen einer Uhrzeitnachricht über CAN
-unsigned long previousCanDateTime = 0;
-
 //Initialstatus der eingebauten LED
 int ledState = LOW;
 
 //Zeitstempel für Sekundentimer
 unsigned long previousOneSecondTick = 0;
-
-//Timeout für CAN-Bus
-const int CAN_TIMEOUT = 30000;
-//Zeitstempel der zuletzt empfangenen CAN-Nachricht
-unsigned long previousCanMsgTimestamp = 0;
-//CAS Debounce Timeout
-const int CAS_DEBOUNCE_TIMEOUT = 1000;
-
-//    iDrive
-
-//Timer für Keepalive
-unsigned long previousIdrivePollTimestamp = 0;
-//Keepalive Intervall
-const int IDRIVE_KEEPALIVE_INTERVAL = 500;
-//Init Timeout
-const int IDRIVE_INIT_TIMEOUT = 750;
-//Init Timer
-unsigned long previousIdriveInitTimestamp = 0;
-//Initialisierung erfolgreich
-bool iDriveInitSuccess = false;
-
-//CAN Nachrichten
-unsigned long previousCasMessageTimestamp = 0;
-bool canbusEnabled = false;
-//Initialisierung des iDrive Controllers, damit dieser die Drehung übermittelt
-//Quelladresse für Init
-const int IDRIVE_CTRL_INIT_ADDR = 0x273;
-//Nachrichtenadresse erfolgreiche Initialisierung
-const int IDRIVE_CTRL_INIT_RESPONSE_ADDR = 0x277;
-//Nachricht für Init
-unsigned char IDRIVE_CTRL_INIT[8] = {0x1D, 0xE1, 0x0, 0xF0, 0xFF, 0x7F, 0xDE, 0x4};
-//Keep-Alive Nachricht, damit der Controller aufgeweckt bleibt
-//Quelladresse für Keepalive
-const int IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
-//Nachricht für Keepalive
-unsigned char IDRIVE_CTRL_KEEPALIVE[8] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-
-//Adresse des iDrive Controllers für Buttons
-const int IDRIVE_CTRL_BTN_ADDR = 0x267;
-//Adresse des iDrive Controllers für Rotation
-const int IDRIVE_CTRL_ROT_ADDR = 0x264;
-//Adresse für Status des iDrive Controllers. byte[5] = Counter, byte[6] Initialisiert: 1 = true, 6 = false
-const int IDRIVE_CTRL_STATUS_ADDR = 0x5E7;
-//TRUE, wenn Initialwert für Drehknopf am iDrive bereits errechnet wurde
-bool RotaryInitPositionSet = false;
-//Zähler für Drehung des Drehknopfes
-unsigned int rotaryposition = 0;
-
-//Adresse für Armaturenbeleuchtung
-//Nachricht: Länge 2
-//Byte 0: Intensität
-//Byte 1: 0x0
-//Mögliche Werte:
-//Dimmwert    byte[0]
-//0           0
-//1           28
-//2           56
-//3           84
-//4           112
-//5           141
-//6           169
-//7           197
-//8           225
-//9           253
-const unsigned long DASHBOARD_LIGHTING_ADDR = 0x202;
-//Nachricht für Licht einschalten
-unsigned char DASHBOARD_LIGHTING_ON[2] = {0xFD, 0x00};
-//Nachricht für Licht auszuschalten
-unsigned char DASHBOARD_LIGHTING_OFF[2] = {0xFE, 0x00};
-
-//        iDrive ENDE
 
 //Mögliche Aktionen
 enum PendingAction
@@ -205,23 +134,6 @@ PendingAction pendingAction = NONE;
 //Beispiel: Das Auto wird aufgesperrt und innerhalb des Startup-Intervalls wieder zugesperrt. Der PC würde nun eingeschaltet bleiben.
 //Hier würde nun gespeichert werden, dass der PC wieder heruntergefahren werden soll, sobald der Timer abgelaufen ist.
 PendingAction queuedAction = NONE;
-
-//iDrive Stuff
-enum iDriveRotationDirection
-{
-  ROTATION_RIGHT,
-  ROTATION_LEFT,
-  ROTATION_NONE
-};
-
-//iDrive Knopf gedreht?
-bool iDriveRotChanged = false;
-//Zuletzt gesicherte Drehung des Knopfes um Richtung zu bestimmen
-int iDriveRotLast = 0;
-//Drehungs-counter
-int iDriveRotCountLast = 0;
-//Drehrichtung
-iDriveRotationDirection iDriveRotDir = ROTATION_NONE;
 
 //Status der Zündung abrufen und entsprechende Aktionen auslösen
 void checkIgnitionState();
@@ -251,10 +163,12 @@ void setup()
 {
   digitalWrite(LED_BUILTIN, LOW);
   Wire.begin(WIRE_ADDRESS); //I2C-Init
-  Serial.begin(115200);
+  Serial.begin(serialBaud);
+  //Tastatur- und Mausemulation aktivieren
   Keyboard.begin();
   Mouse.begin();
 
+  //Zeitstempel einrichten
   buildtimeStamp();
 
   pinMode(PIN_IGNITION_INPUT, INPUT_PULLUP);        //Zündungs-Pin
