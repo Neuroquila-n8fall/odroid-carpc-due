@@ -94,7 +94,48 @@ iDriveRotationDirection iDriveRotDir = ROTATION_NONE;
 
 //iDrive Button debounce limit
 const int IDRIVE_BUTTON_DEBOUNCE = 1000;
-//iDrive Button debounce timer
+//iDrive Button debounce timestamp
 unsigned long previousIdriveButtonTimestamp = 0;
+//iDrive Joystick debounce limit
+const int IDRIVE_JOYSTICK_DEBOUNCE = 1000;
+//iDrive Joystick debounce timestamp
+unsigned long previousIdriveJoystickTimestamp = 0;
+
+enum iDriveButtonPressType
+{
+    BUTTON_SHORT_PRESS,
+    BUTTON_LONG_PRESS,
+    BUTTON_RELEASE
+};
+
+iDriveButtonPressType iDriveBtnPress = BUTTON_RELEASE;
+
+//Zuletzt empfangener Counter der iDrive Funktionsknöpfe. 
+//Wird immer erhöht, wenn eine neue Aktion ausgeführt wird.
+int previousIdriveButtonPressCounter = 0;
+
+//Zuletzt bekannte Art des Tastendrucks
+byte lastKnownIdriveButtonPressType = 0x00;
+//Zuletzt bekannte Funktionstaste
+byte lastKnownIdriveButtonType = 0x00;
+
+//Knopfdefinition
+
+//Menü- oder Drehknopf gedrückt
+const byte IDRIVE_BUTTON_CENTER_MENU = 0x01;
+//Back
+const byte IDRIVE_BUTTON_BACK = 0x02;
+//Option
+const byte IDRIVE_BUTTON_OPTION = 0x04;
+//Radio
+const byte IDRIVE_BUTTON_RADIO = 0x08;
+//CD
+const byte IDRIVE_BUTTON_CD = 0x10;
+//NAV
+const byte IDRIVE_BUTTON_NAV = 0x20;
+//TEL
+const byte IDRIVE_BUTTON_TEL = 0x40;
+//Drehknopf wurde in eine Richtung bewegt
+const byte IDRIVE_JOYSTICK = 0xDD;
 
 //        iDrive ENDE

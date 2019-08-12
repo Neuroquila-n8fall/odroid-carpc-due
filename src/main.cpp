@@ -87,10 +87,10 @@ const unsigned long ODROID_STANDBY_DELAY = 5000; //Wartzeit für Sleepfunktion
 const int serialBaud = 115200;
 
 //CAN Modul initialisieren
-MCP_CAN CAN(SPI_CS_PIN); 
+MCP_CAN CAN(SPI_CS_PIN);
 
 //zuletzt errechneter Helligkeitswert für Display.
-int lastBrightness = 0; 
+int lastBrightness = 0;
 
 //Stunden
 int hours = 0;
@@ -467,10 +467,10 @@ void checkCan()
       Serial.print("[checkCan] iDrive Controller Statusmeldung: ");
       if (buf[4] == 6)
       {
+        Serial.println("Controller ist nicht initialisiert.");
         //Controller meldet er sei nicht initialisiert: Nachricht zum Initialisieren senden.
         CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
         iDriveInitSuccess = false;
-        Serial.println("Controller ist nicht initialisiert.");
       }
       else
       {
@@ -673,42 +673,95 @@ void checkCan()
     {
       Serial.print("[checkCan] iDrive Knöpfe:");
       printCanMsg(canId, buf, len);
-      if (buf[4] != 0xDD)
+      //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
+      int buttonCounter = buf[2];
+
+      //Status der Taste (kurz, lang, losgelassen) oder Joystick-Richtung
+      int buttonPressType = buf[3];
+
+      //Eingabetyp: Button oder Joystick
+      int inputType = buf[4];
+
+      //Knopf
+      int buttonType = buf[5];
+
+      //Aussortieren, ob der Knopf in eine Richtung gedrückt wurde oder ob ein Funktionsknopf gedrückt wurde.
+      if (inputType != IDRIVE_JOYSTICK)
       {
-        switch (buf[5])
+
+        //Entprellung der Knöpfe: Bei jedem Tastendruck wird eine Laufnummer auf byte 2 gesendet. Solange diese sich nicht verändert, wird der Knopf gehalten.
+        //Zur Sicherheit wird dabei gleichzeitig die ID des Knopfes selbst abgeglichen.
+        if (buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType)
+        {
+          //Fallunterscheidung nach Art des Knopfdrucks:
+          // Kurzer Druck = 1 (Wird dauerhaft gesendet)
+          // Gehalten = 2 (Wird nach ca 2 Sekunden halten gesendet)
+          // Losgelassen = 0 (wird immer nach dem Loslassen gesendet)
+          switch (buttonPressType)
+          {
+          //Kurzer Knopfdruck registriert
+          case 0x01:
+          {
+            iDriveBtnPress = BUTTON_SHORT_PRESS;
+            break;
+          }
+          //Lang
+          case 0x02:
+          {
+            iDriveBtnPress = BUTTON_LONG_PRESS;
+            break;
+          }           
+          }
+        }
+
+        //Egal wie der vorherige Status war wird beim Senden von "0" die Taste als losgelassen betrachtet.
+        if(buttonPressType == 0x00)
+        {
+          iDriveBtnPress = BUTTON_RELEASE;
+        }
+
+        //Zeitstempel des letzten Knopfdrucks merken.
+        previousIdriveButtonTimestamp = currentMillis;
+        //Zuletzt empfangenen Zähler merken.
+        previousIdriveButtonPressCounter = buttonCounter;
+        //Zuletzt empfangene Bedienungsart merken.
+        lastKnownIdriveButtonPressType = buttonPressType;
+        
+        //Knöpfe entsprechend nach Typ behandeln
+        switch (buttonType)
         {
         //Joystick oder Menüknopf
-        case 0x01:
-          switch (buf[3])
+        case IDRIVE_BUTTON_CENTER_MENU:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
             Keyboard.press(KEY_RETURN);
             break;
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
             //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
             break;
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
             Keyboard.releaseAll();
             break;
           }
           break;
           //BACK Button
-        case 0x02:
-          switch (buf[3])
+        case IDRIVE_BUTTON_BACK:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
             //Zurück
             Keyboard.press(KEY_LEFT_CTRL);
             Keyboard.press(KEY_BACKSPACE);
             break;
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
             //Letzte Apps durchblättern (alt-tab zweimal tippen)
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
@@ -718,103 +771,128 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
             Keyboard.releaseAll();
             break;
           }
           break;
           //OPTION Button
-        case 0x04:
-          switch (buf[3])
+        case IDRIVE_BUTTON_OPTION:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
+          {
             break;
+          }
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
+          {
             break;
+          }            
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
+          {
             Keyboard.releaseAll();
             break;
           }
-          break;
+          }          
           //RADIO Button
-        case 0x08:
-          switch (buf[3])
+        case IDRIVE_BUTTON_RADIO:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
+          {
             break;
+          }
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
+          {
             break;
+          }            
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
+          {
             Keyboard.releaseAll();
             break;
           }
-          break;
+          }    
           //CD Button
-        case 0x10:
-          switch (buf[3])
+        case IDRIVE_BUTTON_CD:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
+          {
             break;
+          }
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
+          {
             break;
+          }            
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
+          {
             Keyboard.releaseAll();
             break;
           }
-          break;
+          }    
           //NAV Button
-        case 0x20:
-          switch (buf[3])
+        case IDRIVE_BUTTON_NAV:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
+          case BUTTON_SHORT_PRESS:
+          {
             break;
+          }
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
+          {
             break;
+          }            
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
+          {
             Keyboard.releaseAll();
             break;
           }
-          break;
+          }    
           //TEL Button
-        case 0x40:
-          switch (buf[3])
+        case IDRIVE_BUTTON_TEL:
+          switch (iDriveBtnPress)
           {
           //Kurz gedrückt
-          case 0x01:
-
+          case BUTTON_SHORT_PRESS:
+          {
             break;
+          }
           //Lang gedrückt
-          case 0x02:
+          case BUTTON_LONG_PRESS:
+          {
             break;
+          }            
           //Losgelassen
-          case 0x00:
+          case BUTTON_RELEASE:
+          {
             Keyboard.releaseAll();
             break;
           }
-          break;
+          }    
         default:
           break;
         }
       }
-      else
+      else //TODO: Entprellung für Richtungen überprüfen. Funktioniert das hier genauso wie bei den Buttons?
       {
-        switch (buf[3])
+        switch (buttonPressType)
         {
           //Hoch (kurz)
         case 0x11:
           Keyboard.press(KEY_UP_ARROW);
+          Keyboard.releaseAll();
           break;
           //Hoch (lang)
         case 0x12:
@@ -822,7 +900,6 @@ void checkCan()
         //Rechts (kurz)
         case 0x21:
           Keyboard.press(KEY_RIGHT_ARROW);
-          delay(100);
           Keyboard.releaseAll();
           break;
         //Rechts (lang)
@@ -831,7 +908,6 @@ void checkCan()
         //Runter (kurz)
         case 0x41:
           Keyboard.press(KEY_DOWN_ARROW);
-          delay(100);
           Keyboard.releaseAll();
           break;
         //Runter (lang)
@@ -840,7 +916,6 @@ void checkCan()
         //Links (kurz)
         case 0x81:
           Keyboard.press(KEY_LEFT_ARROW);
-          delay(100);
           Keyboard.releaseAll();
           break;
         //Links (lang)
