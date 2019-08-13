@@ -685,48 +685,47 @@ void checkCan()
       //Knopf
       int buttonType = buf[5];
 
+      //Entprellung der Knöpfe: Bei jedem Tastendruck wird eine Laufnummer auf byte 2 gesendet. Solange diese sich nicht verändert, wird der Knopf gehalten.
+      //Zur Sicherheit wird dabei gleichzeitig die ID des Knopfes selbst abgeglichen.
+      if (buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType)
+      {
+        //Fallunterscheidung nach Art des Knopfdrucks:
+        // Kurzer Druck = 1 (Wird dauerhaft gesendet)
+        // Gehalten = 2 (Wird nach ca 2 Sekunden halten gesendet)
+        // Losgelassen = 0 (wird immer nach dem Loslassen gesendet)
+        switch (buttonPressType)
+        {
+        //Kurzer Knopfdruck registriert
+        case 0x01:
+        {
+          iDriveBtnPress = BUTTON_SHORT_PRESS;
+          break;
+        }
+        //Lang
+        case 0x02:
+        {
+          iDriveBtnPress = BUTTON_LONG_PRESS;
+          break;
+        }
+        }
+      }
+
+      //Egal wie der vorherige Status war wird beim Senden von "0" die Taste als losgelassen betrachtet.
+      if (buttonPressType == 0x00)
+      {
+        iDriveBtnPress = BUTTON_RELEASE;
+      }
+
+      //Zeitstempel des letzten Knopfdrucks merken.
+      previousIdriveButtonTimestamp = currentMillis;
+      //Zuletzt empfangenen Zähler merken.
+      previousIdriveButtonPressCounter = buttonCounter;
+      //Zuletzt empfangene Bedienungsart merken.
+      lastKnownIdriveButtonPressType = buttonPressType;
+
       //Aussortieren, ob der Knopf in eine Richtung gedrückt wurde oder ob ein Funktionsknopf gedrückt wurde.
       if (inputType != IDRIVE_JOYSTICK)
       {
-
-        //Entprellung der Knöpfe: Bei jedem Tastendruck wird eine Laufnummer auf byte 2 gesendet. Solange diese sich nicht verändert, wird der Knopf gehalten.
-        //Zur Sicherheit wird dabei gleichzeitig die ID des Knopfes selbst abgeglichen.
-        if (buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType)
-        {
-          //Fallunterscheidung nach Art des Knopfdrucks:
-          // Kurzer Druck = 1 (Wird dauerhaft gesendet)
-          // Gehalten = 2 (Wird nach ca 2 Sekunden halten gesendet)
-          // Losgelassen = 0 (wird immer nach dem Loslassen gesendet)
-          switch (buttonPressType)
-          {
-          //Kurzer Knopfdruck registriert
-          case 0x01:
-          {
-            iDriveBtnPress = BUTTON_SHORT_PRESS;
-            break;
-          }
-          //Lang
-          case 0x02:
-          {
-            iDriveBtnPress = BUTTON_LONG_PRESS;
-            break;
-          }           
-          }
-        }
-
-        //Egal wie der vorherige Status war wird beim Senden von "0" die Taste als losgelassen betrachtet.
-        if(buttonPressType == 0x00)
-        {
-          iDriveBtnPress = BUTTON_RELEASE;
-        }
-
-        //Zeitstempel des letzten Knopfdrucks merken.
-        previousIdriveButtonTimestamp = currentMillis;
-        //Zuletzt empfangenen Zähler merken.
-        previousIdriveButtonPressCounter = buttonCounter;
-        //Zuletzt empfangene Bedienungsart merken.
-        lastKnownIdriveButtonPressType = buttonPressType;
-        
         //Knöpfe entsprechend nach Typ behandeln
         switch (buttonType)
         {
@@ -789,14 +788,14 @@ void checkCan()
           case BUTTON_LONG_PRESS:
           {
             break;
-          }            
+          }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Keyboard.releaseAll();
             break;
           }
-          }          
+          }
           //RADIO Button
         case IDRIVE_BUTTON_RADIO:
           switch (iDriveBtnPress)
@@ -810,14 +809,14 @@ void checkCan()
           case BUTTON_LONG_PRESS:
           {
             break;
-          }            
+          }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Keyboard.releaseAll();
             break;
           }
-          }    
+          }
           //CD Button
         case IDRIVE_BUTTON_CD:
           switch (iDriveBtnPress)
@@ -831,14 +830,14 @@ void checkCan()
           case BUTTON_LONG_PRESS:
           {
             break;
-          }            
+          }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Keyboard.releaseAll();
             break;
           }
-          }    
+          }
           //NAV Button
         case IDRIVE_BUTTON_NAV:
           switch (iDriveBtnPress)
@@ -852,14 +851,14 @@ void checkCan()
           case BUTTON_LONG_PRESS:
           {
             break;
-          }            
+          }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Keyboard.releaseAll();
             break;
           }
-          }    
+          }
           //TEL Button
         case IDRIVE_BUTTON_TEL:
           switch (iDriveBtnPress)
@@ -873,19 +872,19 @@ void checkCan()
           case BUTTON_LONG_PRESS:
           {
             break;
-          }            
+          }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Keyboard.releaseAll();
             break;
           }
-          }    
+          }
         default:
           break;
         }
       }
-      else //TODO: Entprellung für Richtungen überprüfen. Funktioniert das hier genauso wie bei den Buttons?
+      else
       {
         switch (buttonPressType)
         {

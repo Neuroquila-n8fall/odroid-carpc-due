@@ -138,4 +138,21 @@ const byte IDRIVE_BUTTON_TEL = 0x40;
 //Drehknopf wurde in eine Richtung bewegt
 const byte IDRIVE_JOYSTICK = 0xDD;
 
+//Joystick hoch
+const byte IDRIVE_JOYSTICK_UP = 0x11;
+//Joystick hoch gehalten
+const byte IDRIVE_JOYSTICK_UP_HOLD = 0x12;
+//Joystick rechts
+const byte IDRIVE_JOYSTICK_RIGHT = 0x21;
+//Joystick rechts gehalten
+const byte IDRIVE_JOYSTICK_RIGHT_HOLD = 0x22;
+//Joystick runter
+const byte IDRIVE_JOYSTICK_DOWN = 0x41;
+//Joystick runter gehalten
+const byte IDRIVE_JOYSTICK_DOWN_HOLD = 0x42;
+//Joystick links 
+const byte IDRIVE_JOYSTICK_LEFT = 0x81;
+//Joystick links gehalten
+const byte IDRIVE_JOYSTICK_LEFT_HOLD = 0x82;
+
 //        iDrive ENDE
