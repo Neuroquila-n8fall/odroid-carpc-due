@@ -323,7 +323,7 @@ void loop()
           stopOdroid();
           queuedAction = NONE;
         }
-        
+
         //Maus in die Mitte des Bildschirms bringen
         Mouse.move(960,540,0);
       }
@@ -395,9 +395,7 @@ void checkCan()
         if (currentMillis - lastMflPress < 1000)
         {
           Serial.println("[checkCan] Music NEXT");
-          Keyboard.press(MUSIC_NEXT_KEY);
-          delay(200);
-          Keyboard.releaseAll();
+          sendKey(MUSIC_NEXT_KEY);
         }
         else
         {
@@ -415,9 +413,7 @@ void checkCan()
         if (currentMillis - lastMflPress < 1000)
         {
           Serial.println("[checkCan] Music PREV");
-          Keyboard.press(MUSIC_PREV_KEY);
-          delay(200);
-          Keyboard.releaseAll();
+          sendKey(MUSIC_PREV_KEY);
         }
         else
         {
@@ -465,7 +461,6 @@ void checkCan()
     }
     case IDRIVE_CTRL_INIT_RESPONSE_ADDR:
     {
-      Serial.println("[checkCan] iDrive Controller ist aktiv");
       iDriveInitSuccess = true;
       break;
     }
@@ -482,16 +477,9 @@ void checkCan()
       }
       else
       {
-        Serial.println("Controller ist bereit.");
         iDriveInitSuccess = true;
       }
 
-      break;
-    }
-    case IDRIVE_CTRL_KEEPALIVE_ADDR:
-    {
-      Serial.print("[checkCan] 0x501 (Keepalive): ");
-      printCanMsg(canId, buf, len);
       break;
     }
     //CAS: Schlüssel Buttons
@@ -697,7 +685,7 @@ void checkCan()
       //Knöpfe und Joystick
     case 0x267:
     {
-      Serial.print("[checkCan] iDrive Knöpfe:");
+      Serial.print("[checkCan] iDrive:");
       printCanMsg(canId, buf, len);
       //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
       int buttonCounter = buf[2];
@@ -752,19 +740,23 @@ void checkCan()
       //Aussortieren, ob der Knopf in eine Richtung gedrückt wurde oder ob ein Funktionsknopf gedrückt wurde.
       if (inputType != IDRIVE_JOYSTICK)
       {
+        Serial.print("[iDrive] Knopf ");
         //Knöpfe entsprechend nach Typ behandeln
         switch (buttonType)
         {
         //Joystick oder Menüknopf
         case IDRIVE_BUTTON_CENTER_MENU:
+        Serial.print(" CENTER oder MENÜ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
+            Serial.print(" Kurz");
             Keyboard.press(KEY_RETURN);
             break;
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
+          Serial.print(" Lang");
             //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
@@ -772,6 +764,7 @@ void checkCan()
             break;
           //Losgelassen
           case BUTTON_RELEASE:
+          Serial.print(" Release");
             Keyboard.releaseAll();
             break;
           }
@@ -912,15 +905,18 @@ void checkCan()
       }
       else
       {
+        Serial.print(" Joystick");
         switch (buttonPressType)
         {
           //Hoch (kurz)
         case 0x11:
+        Serial.print(" Hoch Kurz");
           Keyboard.press(KEY_UP_ARROW);
           Keyboard.release(KEY_UP_ARROW);
           break;
           //Hoch (lang)
         case 0x12:
+        Serial.print(" Hoch Lang");
           break;
         //Rechts (kurz)
         case 0x21:
