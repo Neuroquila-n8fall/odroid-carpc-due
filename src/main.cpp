@@ -325,7 +325,7 @@ void loop()
         }
 
         //Maus in die Mitte des Bildschirms bringen
-        Mouse.move(960,540,0);
+        //Mouse.move(960,540,0);
       }
       break;
     case ODROID_STANDBY:
@@ -466,7 +466,6 @@ void checkCan()
     }
     case IDRIVE_CTRL_STATUS_ADDR:
     {
-      printCanMsg(canId, buf, len);
       Serial.print("[checkCan] iDrive Controller Statusmeldung: ");
       if (buf[4] == 6)
       {
@@ -477,9 +476,10 @@ void checkCan()
       }
       else
       {
+        Serial.println("Initialisiert.");
         iDriveInitSuccess = true;
       }
-
+      printCanMsg(canId,buf,len);
       break;
     }
     //CAS: Schlüssel Buttons
@@ -629,7 +629,7 @@ void checkCan()
       //Code von IAmOrion
       //  https://github.com/IAmOrion/BMW-iDrive-BLE-HID
 
-      //Das Syste arbeitet nach LittleEndian. Byte 4 und 3 repräsentieren die Drehung und somit auch Drehrichtung.
+      //Das System arbeitet nach LittleEndian. Byte 4 und 3 repräsentieren die Drehung und somit auch Drehrichtung.
       /*
       Beispiel:
       E1      FD      AA      FE      7F      1E
