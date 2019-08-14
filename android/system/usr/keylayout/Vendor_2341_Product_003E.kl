@@ -8,7 +8,9 @@
 # This file will override the generic keyboard layout of the Arduino Due Keyboard emulator
 # Since there is currently no library available to send consumer messgaes to attached devices, 
 # this file will override non-existant function keys (F13 upwards) to special functions like MEDIA_NEXT
-key 1     ESCAPE
+
+#ESCAPE
+key 1     BACK
 key 2     1
 key 3     2
 key 4     3

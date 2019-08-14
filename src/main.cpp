@@ -497,7 +497,12 @@ void checkCan()
             queuedAction = ODROID_START;
             Serial.println("[checkCan] PC wird nach dem Herunterfahren wieder gestartet.");
           }
+          //Starten
           startOdroid();
+          //Keyboard und Maus verbinden
+          Keyboard.begin();
+          Mouse.begin();
+
           //Controller initialisieren.
           CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
           previousIdriveInitTimestamp = currentMillis;
@@ -514,6 +519,10 @@ void checkCan()
             Serial.println("[checkCan] PC wird nach dem Starten wieder heruntergefahren.");
           }
           stopOdroid();
+
+          //Keyboard und Maus trennen
+          Keyboard.end();
+          Mouse.end();
         }
         //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
       }
@@ -1220,7 +1229,7 @@ void sendKey(uint8_t keycode)
 
 void readConsole()
 {
-  if (Serial.available)
+  if (Serial.available())
   {
     String command = Serial.readStringUntil('\n');
     //Kommando zum stoppen der Tastatur und Mausdienste. Wichtig zum umprogrammieren des Controllers
