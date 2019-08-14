@@ -42,6 +42,22 @@ const int IDRIVE_CTRL_KEEPALIVE_ADDR = 0x501;
 //Nachricht für Keepalive
 unsigned char IDRIVE_CTRL_KEEPALIVE[8] = {0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 
+//Falls ich mal auf den Trichter komme auf den Touch Controller vom F-Modell zu wechseln...
+const int IDRIVE_CTRL_KEEPALIVE_ADDR_KCAN2 = 0x560;
+//Nachricht für Keepalive
+unsigned char IDRIVE_CTRL_KEEPALIVE_KCAN2[8] = {0x00, 0x00, 0x00, 0x00, 0x57, 0x2F, 0x00, 0x60};
+
+//Adresse für Touch input
+const int IDRIVE_CTRL_TOUCH_ADDR = 0x0BF;
+//Touch-Modes
+//Keine Finger
+const int IDRIVE_CTRL_TOUCH_RELEASE = 0x11;
+//Ein Finger
+const int IDRIVE_CTRL_TOUCH_FINGER = 0x10;
+//Zwei Finger
+const int IDRIVE_CTRL_TOUCH_MULTI = 0x00;
+
+
 //Adresse des iDrive Controllers für Buttons
 const int IDRIVE_CTRL_BTN_ADDR = 0x267;
 //Adresse des iDrive Controllers für Rotation
@@ -93,13 +109,16 @@ int iDriveRotCountLast = 0;
 iDriveRotationDirection iDriveRotDir = ROTATION_NONE;
 
 //iDrive Button debounce limit
-const int IDRIVE_BUTTON_DEBOUNCE = 1000;
+const int IDRIVE_BUTTON_DEBOUNCE = 500;
 //iDrive Button debounce timestamp
 unsigned long previousIdriveButtonTimestamp = 0;
 //iDrive Joystick debounce limit
-const int IDRIVE_JOYSTICK_DEBOUNCE = 1000;
+const int IDRIVE_JOYSTICK_DEBOUNCE = 500;
 //iDrive Joystick debounce timestamp
 unsigned long previousIdriveJoystickTimestamp = 0;
+//Zuletzt gedrückte Taste
+byte previousIdriveButton = 0x00;
+
 
 enum iDriveButtonPressType
 {

@@ -158,6 +158,10 @@ void scrollScreen();
 //Uhrzeit pflegen. Ist ausschließlich dazu da die Uhrzeit voran schreiten zu lassen, wenn der Canbus inaktiv ist und keine Zeit vom Auto kommt.
 //Die RTC Library kommt leider nicht in Frage da mein DUE board wohl keinen Kristall für RTC hat und daher der MCU einfriert beim initialisieren.
 void timeKeeper();
+//Taste drücken und sofort wieder freigeben
+void sendKey(uint8_t keycode);
+//Interaktion mit serieller Konsole
+void readConsole();
 
 void setup()
 {
@@ -200,6 +204,7 @@ void loop()
 {
   //Aktuelle Zeit
   unsigned long currentMillis = millis();
+
   if (startup)
   {
     //Wenn die Steuerung mit aktiver Zündung startet oder resettet, sollte der Odroid starten
@@ -318,6 +323,9 @@ void loop()
           stopOdroid();
           queuedAction = NONE;
         }
+        
+        //Maus in die Mitte des Bildschirms bringen
+        Mouse.move(960,540,0);
       }
       break;
     case ODROID_STANDBY:
@@ -621,10 +629,29 @@ void checkCan()
       //       0x7F für Drehung gegen den Uhrzeigersinn
       //        Alle anderen Werte: Keine Drehung
 
+      //Code von IAmOrion
+      //  https://github.com/IAmOrion/BMW-iDrive-BLE-HID
+
+      //Das Syste arbeitet nach LittleEndian. Byte 4 und 3 repräsentieren die Drehung und somit auch Drehrichtung.
+      /*
+      Beispiel:
+      E1      FD      AA      FE      7F      1E
+      E1      FD      AB      FD      7F      1E
+      E1      FD      AC      FE      7F      1E
+      E1      FD      AD      FF      7F      1E
+      E1      FD      AE      1       80      1E
+      E1      FD      AF      2       80      1E
+      E1      FD      B0      3       80      1E
+      */
+      //Es wird also von 80FF nach 7F00 heruntergezählt und umgekehrt.
+
       byte rotarystepa = buf[3];
       byte rotarystepb = buf[4];
-      unsigned int newpos = (((unsigned int)rotarystepa) + ((unsigned int)rotarystepb) * 0x100);
+      //unsigned int newpos = (((unsigned int)rotarystepa) + ((unsigned int)rotarystepb) * 0x100);
+      //Bitshift Endianness: 0xFF, 0x7F -> 7FFF
+      unsigned int newpos = (rotarystepb << 8) + rotarystepa;
 
+      //Initialstellung des Encoders feststellen
       if (!(RotaryInitPositionSet))
       {
         switch (rotarystepb)
@@ -642,20 +669,25 @@ void checkCan()
         RotaryInitPositionSet = true;
       }
 
+      //Da auch die Drehgeschwindigkeit durch byte 3 mit einbezogen wird, sollte diese auch ausgeführt werden.
+      //Hier wird einfach das Delta zwischen alter und neuer Position ausgeführt.
       while (rotaryposition < newpos)
       {
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_RIGHT;
+          //Scrollbewegung ausführen
+          scrollScreen();
         }
         rotaryposition++;
       }
-
       while (rotaryposition > newpos)
       {
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_LEFT;
+          //Scrollbewegung ausführen
+          scrollScreen();
         }
         rotaryposition--;
       }
@@ -663,12 +695,6 @@ void checkCan()
       break;
     }
       //Knöpfe und Joystick
-
-      //TODO: Debounce für Knöpfe:
-      //Knopf wird auch dauerhaft gesendet, solange er gedrückt ist und auch wenn er gedrückt gehalten wird und buf[3] auf 0x02 wechselt!
-      //--> buf[3] beobachten:
-      //Wenn dieser innerhalb einer gewissen Zeit immernoch auftaucht, bevor RELEASE 0x00 gesendet wird und dann auf 0x02 umspringt, wurde der knopf gehalten.
-
     case 0x267:
     {
       Serial.print("[checkCan] iDrive Knöpfe:");
@@ -687,7 +713,7 @@ void checkCan()
 
       //Entprellung der Knöpfe: Bei jedem Tastendruck wird eine Laufnummer auf byte 2 gesendet. Solange diese sich nicht verändert, wird der Knopf gehalten.
       //Zur Sicherheit wird dabei gleichzeitig die ID des Knopfes selbst abgeglichen.
-      if (buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType)
+      if ((buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType) && previousIdriveButtonTimestamp - currentMillis >= 500)
       {
         //Fallunterscheidung nach Art des Knopfdrucks:
         // Kurzer Druck = 1 (Wird dauerhaft gesendet)
@@ -742,6 +768,7 @@ void checkCan()
             //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
+            Keyboard.release(KEY_TAB);
             break;
           //Losgelassen
           case BUTTON_RELEASE:
@@ -756,18 +783,11 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
             //Zurück
-            Keyboard.press(KEY_LEFT_CTRL);
-            Keyboard.press(KEY_BACKSPACE);
+            Keyboard.press(KEY_ESC);
+            Keyboard.release(KEY_ESC);
             break;
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
-            //Letzte Apps durchblättern (alt-tab zweimal tippen)
-            Keyboard.press(KEY_LEFT_ALT);
-            Keyboard.press(KEY_TAB);
-            Keyboard.releaseAll();
-            Keyboard.press(KEY_LEFT_ALT);
-            Keyboard.press(KEY_TAB);
-            Keyboard.releaseAll();
             break;
           //Losgelassen
           case BUTTON_RELEASE:
@@ -782,6 +802,11 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
+            //Menü aufrufen
+            Keyboard.press(KEY_LEFT_CTRL);
+            Keyboard.press(KEY_ESC);
+            Keyboard.release(KEY_LEFT_CTRL);
+            Keyboard.release(KEY_ESC);
             break;
           }
           //Lang gedrückt
@@ -883,6 +908,7 @@ void checkCan()
         default:
           break;
         }
+        previousIdriveButton = buttonType;
       }
       else
       {
@@ -891,7 +917,7 @@ void checkCan()
           //Hoch (kurz)
         case 0x11:
           Keyboard.press(KEY_UP_ARROW);
-          Keyboard.releaseAll();
+          Keyboard.release(KEY_UP_ARROW);
           break;
           //Hoch (lang)
         case 0x12:
@@ -899,7 +925,7 @@ void checkCan()
         //Rechts (kurz)
         case 0x21:
           Keyboard.press(KEY_RIGHT_ARROW);
-          Keyboard.releaseAll();
+          Keyboard.release(KEY_RIGHT_ARROW);
           break;
         //Rechts (lang)
         case 0x22:
@@ -907,7 +933,7 @@ void checkCan()
         //Runter (kurz)
         case 0x41:
           Keyboard.press(KEY_DOWN_ARROW);
-          Keyboard.releaseAll();
+          Keyboard.release(KEY_DOWN_ARROW);
           break;
         //Runter (lang)
         case 0x42:
@@ -915,7 +941,7 @@ void checkCan()
         //Links (kurz)
         case 0x81:
           Keyboard.press(KEY_LEFT_ARROW);
-          Keyboard.releaseAll();
+          Keyboard.release(KEY_LEFT_ARROW);
           break;
         //Links (lang)
         case 0x82:
@@ -927,6 +953,7 @@ void checkCan()
 
       break;
     }
+
     //PDC
     case 0x1C2:
     {
@@ -1003,9 +1030,6 @@ void checkCan()
       break;
     }
   }
-
-  //Mausbewegungen zum Scrollen umsetzen.
-  scrollScreen();
 
   //Timeout für Canbus.
   if (currentMillis - previousCanMsgTimestamp >= CAN_TIMEOUT && canbusEnabled == true)
@@ -1112,8 +1136,10 @@ void printCanMsg(int canId, unsigned char *buffer, int len)
 {
   //OUTPUT:
   //ABC FF  FF  FF  FF  FF  FF  FF  FF
+  Serial.print('[');
   Serial.print(canId, HEX);
-  Serial.println('\t');
+  Serial.print(']');
+  Serial.print('\t');
   for (int i = 0; i < len; i++)
   {
     Serial.print(buffer[i], HEX);
@@ -1187,5 +1213,32 @@ void timeKeeper()
     buildtimeStamp();
     //Sekunden erhöhen
     seconds++;
+  }
+}
+
+void sendKey(uint8_t keycode)
+{
+  Keyboard.press(keycode);
+  Keyboard.release(keycode);
+}
+
+void readConsole()
+{
+  if (Serial.available)
+  {
+    String command = Serial.readStringUntil('\n');
+    //Kommando zum stoppen der Tastatur und Mausdienste. Wichtig zum umprogrammieren des Controllers
+    //Sind Tastatur oder Maus aktiv, kann der Due nicht neu beschrieben werden...
+    if (command == "hid.stop")
+    {
+      Keyboard.releaseAll();
+      Keyboard.end();
+      Mouse.end();
+    }
+    if (command == "hid.start")
+    {
+      Keyboard.begin();
+      Mouse.begin();
+    }
   }
 }
