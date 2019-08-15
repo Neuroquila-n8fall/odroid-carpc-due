@@ -37,8 +37,8 @@ GND   MOSI  5V
 
 //2 Sekunden für Aufwecken
 const int ODROID_BOOT_HOLD_DELAY = 2100;
-//5 Sekunden zum Herunterfahren
-const int ODROID_SHUTDOWN_HOLD_DELAY = 5100;
+//5 Sekunden zum Herunterfahren (Lineage braucht nur 2100)
+const int ODROID_SHUTDOWN_HOLD_DELAY = 2100;
 
 /*
       Tastenbefehle für Odroid Settings
@@ -472,7 +472,7 @@ void checkCan()
         Serial.println("Initialisiert.");
         iDriveInitSuccess = true;
       }
-      printCanMsg(canId,buf,len);
+      printCanMsg(canId, buf, len);
       break;
     }
     //CAS: Schlüssel Buttons
@@ -509,7 +509,6 @@ void checkCan()
             Serial.println("[checkCan] PC wird nach dem Starten wieder heruntergefahren.");
           }
           stopOdroid();
-
         }
         //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
       }
@@ -660,6 +659,11 @@ void checkCan()
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_RIGHT;
+          //Während der Menüknopf gedrückt ist (bzw. der Joystick gedrückt ist) kann man mit Drehung des Joysticks blättern
+          if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
+          {
+            sendKey(KEY_RIGHT_ARROW);
+          }
         }
         rotaryposition++;
       }
@@ -668,15 +672,43 @@ void checkCan()
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_LEFT;
+          if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
+          {
+            sendKey(KEY_LEFT_ARROW);
+          }
         }
         rotaryposition--;
       }
+      //Zeitstempel
+      Serial.print(timeStamp + '\t');
+      Serial.print("[checkCan] iDrive Rotation: ");
+      switch (iDriveRotDir)
+      {
+      case ROTATION_LEFT:
+      {
+        Serial.println("Rechtsdrehung");
+        break;
+      }
+      case ROTATION_RIGHT:
+      {
+        Serial.println("Linksdrehung");
+        break;
+      }
 
+      default:
+      {
+        Serial.println("Keine");
+        break;
+      }
+      } //END ROTARY DIRECTION
       break;
-    }
+    } //END ROTARY
+
       //Knöpfe und Joystick
     case 0x267:
     {
+      //Zeitstempel
+      Serial.print(timeStamp + '\t');
       Serial.print("[checkCan] iDrive:");
       printCanMsg(canId, buf, len);
       //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
@@ -693,7 +725,7 @@ void checkCan()
 
       //Entprellung der Knöpfe: Bei jedem Tastendruck wird eine Laufnummer auf byte 2 gesendet. Solange diese sich nicht verändert, wird der Knopf gehalten.
       //Zur Sicherheit wird dabei gleichzeitig die ID des Knopfes selbst abgeglichen.
-      if ((buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType) && previousIdriveButtonTimestamp - currentMillis >= 500)
+      if ((buttonCounter != previousIdriveButtonPressCounter || lastKnownIdriveButtonPressType != buttonPressType) && previousIdriveButtonTimestamp - currentMillis >= IDRIVE_BUTTON_DEBOUNCE)
       {
         //Fallunterscheidung nach Art des Knopfdrucks:
         // Kurzer Druck = 1 (Wird dauerhaft gesendet)
@@ -713,7 +745,7 @@ void checkCan()
           iDriveBtnPress = BUTTON_LONG_PRESS;
           break;
         }
-        }
+        } //END BUTONPRESSTYPE
       }
 
       //Egal wie der vorherige Status war wird beim Senden von "0" die Taste als losgelassen betrachtet.
@@ -728,17 +760,21 @@ void checkCan()
       previousIdriveButtonPressCounter = buttonCounter;
       //Zuletzt empfangene Bedienungsart merken.
       lastKnownIdriveButtonPressType = buttonPressType;
+      //Zuletzt gedrücktne Knopf merken
+      lastKnownIdriveButtonType = buttonType;
 
       //Aussortieren, ob der Knopf in eine Richtung gedrückt wurde oder ob ein Funktionsknopf gedrückt wurde.
       if (inputType != IDRIVE_JOYSTICK)
       {
+        //Zeitstempel
+        Serial.print(timeStamp + '\t');
         Serial.print("[iDrive] Knopf ");
         //Knöpfe entsprechend nach Typ behandeln
         switch (buttonType)
         {
         //Joystick oder Menüknopf
         case IDRIVE_BUTTON_CENTER_MENU:
-        Serial.print(" CENTER oder MENÜ");
+          Serial.print(" CENTER oder MENÜ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -748,7 +784,7 @@ void checkCan()
             break;
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
-          Serial.print(" Lang");
+            Serial.print(" Lang");
             //Zuletzt geöffnete Apps anzeigen
             Keyboard.press(KEY_LEFT_ALT);
             Keyboard.press(KEY_TAB);
@@ -756,10 +792,10 @@ void checkCan()
             break;
           //Losgelassen
           case BUTTON_RELEASE:
-          Serial.print(" Release");
+            Serial.print(" Release");
             Keyboard.releaseAll();
             break;
-          }
+          } //END BUTTON PRESS DURATION
           break;
           //BACK Button
         case IDRIVE_BUTTON_BACK:
@@ -778,7 +814,7 @@ void checkCan()
           case BUTTON_RELEASE:
             Keyboard.releaseAll();
             break;
-          }
+          } //END BUTTON PRESS DURATION
           break;
           //OPTION Button
         case IDRIVE_BUTTON_OPTION:
@@ -790,8 +826,6 @@ void checkCan()
             //Menü aufrufen
             Keyboard.press(KEY_LEFT_CTRL);
             Keyboard.press(KEY_ESC);
-            Keyboard.release(KEY_LEFT_CTRL);
-            Keyboard.release(KEY_ESC);
             break;
           }
           //Lang gedrückt
@@ -805,7 +839,7 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           }
-          }
+          } //END BUTTON PRESS DURATION
           //RADIO Button
         case IDRIVE_BUTTON_RADIO:
           switch (iDriveBtnPress)
@@ -826,7 +860,7 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           }
-          }
+          } //END BUTTON PRESS DURATION
           //CD Button
         case IDRIVE_BUTTON_CD:
           switch (iDriveBtnPress)
@@ -847,7 +881,7 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           }
-          }
+          } //END BUTTON PRESS DURATION
           //NAV Button
         case IDRIVE_BUTTON_NAV:
           switch (iDriveBtnPress)
@@ -868,7 +902,7 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           }
-          }
+          } //END BUTTON PRESS DURATION
           //TEL Button
         case IDRIVE_BUTTON_TEL:
           switch (iDriveBtnPress)
@@ -889,10 +923,10 @@ void checkCan()
             Keyboard.releaseAll();
             break;
           }
-          }
+          } //END BUTTON PRESS DURATION
         default:
           break;
-        }
+        } //END BUTTON PRESS
         previousIdriveButton = buttonType;
       }
       else
@@ -902,13 +936,13 @@ void checkCan()
         {
           //Hoch (kurz)
         case 0x11:
-        Serial.print(" Hoch Kurz");
+          Serial.print(" Hoch Kurz");
           Keyboard.press(KEY_UP_ARROW);
           Keyboard.release(KEY_UP_ARROW);
           break;
           //Hoch (lang)
         case 0x12:
-        Serial.print(" Hoch Lang");
+          Serial.print(" Hoch Lang");
           break;
         //Rechts (kurz)
         case 0x21:
@@ -936,9 +970,10 @@ void checkCan()
           break;
         default:
           break;
-        }
+        } //END DIRECTION
       }
-
+      //Zeile beenden.
+      Serial.println();
       break;
     }
 
@@ -978,15 +1013,19 @@ void checkCan()
     case 0x3B4:
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
-      float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
+      //float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
 
       if (buf[3] == 0x00)
       {
-        Serial.print("Engine RUNNING");
+        //Zeitstempel
+        Serial.print(timeStamp + '\t');
+        Serial.println("Engine RUNNING");
       }
       if (buf[3] == 0x09)
       {
-        Serial.print("Engine OFF");
+        //Zeitstempel
+        Serial.print(timeStamp + '\t');
+        Serial.println("Engine OFF");
       }
       break;
     }
@@ -1026,6 +1065,8 @@ void checkCan()
     //Der iDrive Controller ist jetzt als deaktiviert zu betrachten und muss neu intialisiert werden
     iDriveInitSuccess = false;
     canbusEnabled = false;
+    //Zeitstempel
+    Serial.print(timeStamp + '\t');
     Serial.println("[checkCan] Keine Nachrichten seit 30 Sekunden. Der Bus wird nun als deaktiviert betrachtet.");
   }
 }
@@ -1057,7 +1098,11 @@ void checkIgnitionState()
 
 void startOdroid()
 {
-  Serial.print("[STARTODROID] Odroid Status:");
+  //Tastatur ankoppeln
+  Keyboard.begin();
+  //Zeitstempel
+  Serial.print(timeStamp + '\t');
+  Serial.print("[startOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits läuft
   if (odroidStartRequested || odroidRunning || pendingAction != NONE)
@@ -1069,6 +1114,8 @@ void startOdroid()
   odroidStartRequested = true;
   pendingAction = ODROID_START;
   digitalWrite(PIN_ODROID_POWER_BUTTON, HIGH);
+  //Zeitstempel
+  Serial.print(timeStamp + '\t');
   Serial.println("[startOdroid] Start angefordert.");
   previousOdroidActionTime = millis();
 }
@@ -1095,7 +1142,11 @@ void pauseOdroid()
 
 void stopOdroid()
 {
-  Serial.print("[STOPODROID] Odroid Status:");
+  //Tastatur abkoppeln
+  Keyboard.end();
+  //Zeitstempel
+  Serial.print(timeStamp + '\t');
+  Serial.print("[stopOdroid] Odroid Status:");
   Serial.println(odroidRunning == LOW ? "AUS" : "AN");
   //Mehrfachen Aufruf verhindern - auch wenn der PC bereits aus ist. Das würde diesen nämlich einschalten.
   if (odroidShutdownRequested || !odroidRunning || pendingAction != NONE)

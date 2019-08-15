@@ -29,6 +29,7 @@ bool iDriveInitSuccess = false;
 //CAN Nachrichten
 unsigned long previousCasMessageTimestamp = 0;
 bool canbusEnabled = false;
+
 //Initialisierung des iDrive Controllers, damit dieser die Drehung übermittelt
 //Quelladresse für Init
 const int IDRIVE_CTRL_INIT_ADDR = 0x273;
