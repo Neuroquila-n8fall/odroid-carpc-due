@@ -1,9 +1,7 @@
 #include <Arduino.h>
-#include <Wire.h>
 #include <SPI.h>
 #include <mcp_can.h>
 #include <Keyboard.h>
-#include <Mouse.h>
 /*
   Projektbezogene Header
 */
@@ -17,8 +15,6 @@ const int PIN_ODROID_POWER_INPUT = 7;
 const int PIN_ODROID_POWER_BUTTON = 8;
 //Power Button vom Display
 const int PIN_ODROID_DISPLAY_POWER_BUTTON = 9;
-//I2C Receiver Addresse
-const int WIRE_ADDRESS = 0x01;
 //CAN CS Pin
 const int SPI_CS_PIN = 10;
 //Pin für Display Helligkeit
@@ -166,11 +162,9 @@ void readConsole();
 void setup()
 {
   digitalWrite(LED_BUILTIN, LOW);
-  Wire.begin(WIRE_ADDRESS); //I2C-Init
   Serial.begin(serialBaud);
-  //Tastatur- und Mausemulation aktivieren
+  //Tastatur aktivieren
   Keyboard.begin();
-  Mouse.begin();
 
   //Zeitstempel einrichten
   buildtimeStamp();
@@ -263,6 +257,8 @@ void loop()
 
   //CAN Nachrichten verarbeiten
   checkCan();
+  //Konsole
+  readConsole();
 
   //1-Second timer
   if (currentMillis - previousOneSecondTick >= 1000)
@@ -323,9 +319,6 @@ void loop()
           stopOdroid();
           queuedAction = NONE;
         }
-
-        //Maus in die Mitte des Bildschirms bringen
-        //Mouse.move(960,540,0);
       }
       break;
     case ODROID_STANDBY:
@@ -499,9 +492,6 @@ void checkCan()
           }
           //Starten
           startOdroid();
-          //Keyboard und Maus verbinden
-          Keyboard.begin();
-          Mouse.begin();
 
           //Controller initialisieren.
           CAN.sendMsgBuf(IDRIVE_CTRL_INIT_ADDR, 0, 8, IDRIVE_CTRL_INIT);
@@ -520,9 +510,6 @@ void checkCan()
           }
           stopOdroid();
 
-          //Keyboard und Maus trennen
-          Keyboard.end();
-          Mouse.end();
         }
         //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
       }
@@ -673,8 +660,6 @@ void checkCan()
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_RIGHT;
-          //Scrollbewegung ausführen
-          scrollScreen();
         }
         rotaryposition++;
       }
@@ -683,8 +668,6 @@ void checkCan()
         if (!iDriveInitSuccess)
         {
           iDriveRotDir = ROTATION_LEFT;
-          //Scrollbewegung ausführen
-          scrollScreen();
         }
         rotaryposition--;
       }
@@ -1173,22 +1156,6 @@ void printCanMsgCsv(int canId, unsigned char *buffer, int len)
   Serial.println();
 }
 
-void scrollScreen()
-{
-  if (iDriveRotDir == ROTATION_RIGHT)
-  {
-    Mouse.move(0, 0, 1);
-  }
-  if (iDriveRotDir == ROTATION_LEFT)
-  {
-    Mouse.move(0, 0, -1);
-  }
-  if (iDriveRotDir == ROTATION_NONE)
-  {
-    Mouse.move(0, 0, 0);
-  }
-}
-
 void timeKeeper()
 {
   unsigned long currentMillis = millis();
@@ -1229,21 +1196,8 @@ void sendKey(uint8_t keycode)
 
 void readConsole()
 {
-  if (Serial.available())
+  if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
-    //Kommando zum stoppen der Tastatur und Mausdienste. Wichtig zum umprogrammieren des Controllers
-    //Sind Tastatur oder Maus aktiv, kann der Due nicht neu beschrieben werden...
-    if (command == "hid.stop")
-    {
-      Keyboard.releaseAll();
-      Keyboard.end();
-      Mouse.end();
-    }
-    if (command == "hid.start")
-    {
-      Keyboard.begin();
-      Mouse.begin();
-    }
   }
 }
