@@ -37,8 +37,8 @@ GND   MOSI  5V
 
 //2 Sekunden für Aufwecken
 const int ODROID_BOOT_HOLD_DELAY = 2100;
-//5 Sekunden zum Herunterfahren (Lineage braucht nur 2100)
-const int ODROID_SHUTDOWN_HOLD_DELAY = 2100;
+//5 Sekunden zum Herunterfahren (Lineage braucht nur 1 Sekunde bei aktivierung der Option "Shutdown without prompt")
+const int ODROID_SHUTDOWN_HOLD_DELAY = 1000;
 
 /*
       Tastenbefehle für Odroid Settings
