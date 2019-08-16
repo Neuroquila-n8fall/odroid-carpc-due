@@ -41,17 +41,6 @@ const int ODROID_BOOT_HOLD_DELAY = 2100;
 //5 Sekunden zum Herunterfahren (Lineage braucht nur 1 Sekunde bei aktivierung der Option "Shutdown without prompt")
 const int ODROID_SHUTDOWN_HOLD_DELAY = 1000;
 
-/*
-      Tastenbefehle für Odroid Settings
-      Momentan ist es notwendig diese Tasten in der /vendor/usr/keylayout/Generic.kl abzuändern um die gewünschte Funktion zu besitzen
-*/
-const byte MUSIC_NEXT_KEY = KEY_F1;
-const byte MUSIC_PREV_KEY = KEY_F2;
-const byte MUSIC_FASTFORWARD_KEY = KEY_F3;
-const byte MUSIC_REWIND_KEY = KEY_F4;
-const byte VOICE_BUTTON = KEY_F7;
-const byte PICKUP_BUTTON = KEY_F8;
-
 int odroidRunning = LOW; //Ergebnis vom Odroid GPIO #1. LOW = aus, HIGH = an
 
 int lastIgnitionState = HIGH; //Hält den letzten Zündungsstatus
@@ -111,6 +100,9 @@ char dateString[11] = "00.00.0000";
 //Initialstatus der eingebauten LED
 int ledState = LOW;
 
+//BT Library
+BPLib *BPMod;
+
 //Zeitstempel für Sekundentimer
 unsigned long previousOneSecondTick = 0;
 
@@ -164,8 +156,16 @@ void setup()
 {
   digitalWrite(LED_BUILTIN, LOW);
   Serial.begin(serialBaud);
-  //Tastatur aktivieren
-  Keyboard.begin();
+
+  // Bluetooth Modul
+  //Serial1 (18/19 für BT Modul benutzen)
+  Serial.println("[setup] Serial 1 (Pin 18,19)");
+  Serial1.begin(serialBaud);
+  Serial.println("[setup] Setup BT Library");
+  BPMod = new BPLib(Serial1);
+  Serial.println("[setup] Set BT Mode to HID COMBO");
+  BPMod->begin(BP_MODE_HID,BP_HID_COMBO);
+  
 
   //Zeitstempel einrichten
   buildtimeStamp();
@@ -193,6 +193,7 @@ void setup()
     analogWrite(PIN_VU7A_BRIGHTNESS, i);
   }
   digitalWrite(LED_BUILTIN, HIGH);
+  Serial.println("[setup] Ready.");
 }
 
 void loop()
@@ -371,10 +372,7 @@ void checkCan()
         //Knöpfe zurücksetzen
         MflButtonNextHold = false;
         MflButtonPrevHold = false;
-        Keyboard.release(MUSIC_NEXT_KEY);
-        Keyboard.release(MUSIC_PREV_KEY);
-        Keyboard.release(MUSIC_FASTFORWARD_KEY);
-        Keyboard.release(MUSIC_REWIND_KEY);
+        BPMod->keyRelease();
       }
       //Next
       if (buf[0] == 0xE0 && buf[1] == 0x0C)
@@ -389,14 +387,15 @@ void checkCan()
         if (currentMillis - lastMflPress < 1000)
         {
           Serial.println("[checkCan] Music NEXT");
-          sendKey(MUSIC_NEXT_KEY);
+          BPMod->nextTrack();
+          BPMod->keyRelease();
         }
         else
         {
           //Knopf wird gehalten
-          Keyboard.press(MUSIC_FASTFORWARD_KEY);
           MflButtonNextHold = true;
           Serial.println("[checkCan] Music FASTFORWARD");
+          BPMod->fastForwardAudio();
         }
         lastMflPress = currentMillis;
       }
@@ -407,14 +406,15 @@ void checkCan()
         if (currentMillis - lastMflPress < 1000)
         {
           Serial.println("[checkCan] Music PREV");
-          sendKey(MUSIC_PREV_KEY);
+          BPMod->prevTrack();
+          BPMod->keyRelease();
         }
         else
         {
           //Knopf wird gehalten
-          Keyboard.press(MUSIC_REWIND_KEY);
           MflButtonPrevHold = true;
           Serial.println("[checkCan] Music REWIND");
+          BPMod->rewindAudio();
         }
         lastMflPress = currentMillis;
       }
@@ -663,7 +663,9 @@ void checkCan()
           //Während der Menüknopf gedrückt ist (bzw. der Joystick gedrückt ist) kann man mit Drehung des Joysticks blättern
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
-            sendKey(KEY_RIGHT_ARROW);
+            //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
+            BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
           }
         }
         rotaryposition++;
@@ -675,7 +677,9 @@ void checkCan()
           iDriveRotDir = ROTATION_LEFT;
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
-            sendKey(KEY_LEFT_ARROW);
+            //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
+            BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
           }
         }
         rotaryposition--;
@@ -781,20 +785,20 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
             Serial.print(" Kurz");
-            Keyboard.press(KEY_RETURN);
+            BPMod->keyboardPress(BP_KEY_ENTER,BP_MOD_NOMOD);
             break;
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
             Serial.print(" Lang");
             //Zuletzt geöffnete Apps anzeigen
-            Keyboard.press(KEY_LEFT_ALT);
-            Keyboard.press(KEY_TAB);
-            Keyboard.release(KEY_TAB);
+            //ALT + TAB, danach TAB loslassen und ALT gedrückt halten.
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_KEY_TAB);
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_MOD_NOMOD);
             break;
           //Losgelassen
           case BUTTON_RELEASE:
             Serial.print(" Release");
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           } //END BUTTON PRESS DURATION
           break;
@@ -805,15 +809,15 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
             //Zurück
-            Keyboard.press(KEY_ESC);
-            Keyboard.release(KEY_ESC);
+            BPMod->keyboardPress(BP_KEY_ESCAPE,BP_MOD_NOMOD);
+            BPMod->keyboardReleaseAll();
             break;
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
             break;
           //Losgelassen
           case BUTTON_RELEASE:
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           } //END BUTTON PRESS DURATION
           break;
@@ -825,8 +829,8 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            Keyboard.press(KEY_LEFT_CTRL);
-            Keyboard.press(KEY_ESC);
+            BPMod->keyboardPress(BP_KEY_ESCAPE,BP_MOD_LEFT_CTRL);
+            BPMod->keyboardReleaseAll();
             break;
           }
           //Lang gedrückt
@@ -837,7 +841,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -858,7 +862,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -879,7 +883,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -900,7 +904,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -921,7 +925,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Keyboard.releaseAll();
+            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -938,8 +942,8 @@ void checkCan()
           //Hoch (kurz)
         case 0x11:
           Serial.print(" Hoch Kurz");
-          Keyboard.press(KEY_UP_ARROW);
-          Keyboard.release(KEY_UP_ARROW);
+          BPMod->keyboardPress(BP_KEY_UP_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardReleaseAll();
           break;
           //Hoch (lang)
         case 0x12:
@@ -947,24 +951,24 @@ void checkCan()
           break;
         //Rechts (kurz)
         case 0x21:
-          Keyboard.press(KEY_RIGHT_ARROW);
-          Keyboard.release(KEY_RIGHT_ARROW);
+          BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardReleaseAll();
           break;
         //Rechts (lang)
         case 0x22:
           break;
         //Runter (kurz)
         case 0x41:
-          Keyboard.press(KEY_DOWN_ARROW);
-          Keyboard.release(KEY_DOWN_ARROW);
+          BPMod->keyboardPress(BP_KEY_DOWN_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardReleaseAll();
           break;
         //Runter (lang)
         case 0x42:
           break;
         //Links (kurz)
         case 0x81:
-          Keyboard.press(KEY_LEFT_ARROW);
-          Keyboard.release(KEY_LEFT_ARROW);
+          BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardReleaseAll();
           break;
         //Links (lang)
         case 0x82:
@@ -1099,8 +1103,6 @@ void checkIgnitionState()
 
 void startOdroid()
 {
-  //Tastatur ankoppeln
-  Keyboard.begin();
   //Zeitstempel
   Serial.print(timeStamp + '\t');
   Serial.print("[startOdroid] Odroid Status:");
@@ -1143,8 +1145,6 @@ void pauseOdroid()
 
 void stopOdroid()
 {
-  //Tastatur abkoppeln
-  Keyboard.end();
   //Zeitstempel
   Serial.print(timeStamp + '\t');
   Serial.print("[stopOdroid] Odroid Status:");
@@ -1238,12 +1238,6 @@ void timeKeeper()
     //Sekunden erhöhen
     seconds++;
   }
-}
-
-void sendKey(uint8_t keycode)
-{
-  Keyboard.press(keycode);
-  Keyboard.release(keycode);
 }
 
 void readConsole()
