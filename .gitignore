@@ -4,11 +4,6 @@
 !.pio/build/due
 .pio/build/due/*
 !.pio/build/due/firmware.bin
-!.pio/libdeps
-.pio/libdeps/*
-!.pio/libdeps/due
-.pio/libdeps/due/*
-!.pio/libdeps/due/BPLib
 .piolibdeps
 .vscode
 .travis.yml
