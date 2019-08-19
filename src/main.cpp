@@ -159,13 +159,10 @@ void setup()
 
   // Bluetooth Modul
   //Serial1 (18/19 für BT Modul benutzen)
-  Serial.println("[setup] Serial 1 (Pin 18,19)");
+  Serial.println("[setup] Serial 1 (Pin TX:18,RX:19)");
   Serial1.begin(serialBaud);
   Serial.println("[setup] Setup BT Library");
   BPMod = new BPLib(Serial1);
-  Serial.println("[setup] Set BT Mode to HID COMBO");
-  BPMod->begin(BP_MODE_HID,BP_HID_COMBO);
-  
 
   //Zeitstempel einrichten
   buildtimeStamp();
@@ -664,8 +661,10 @@ void checkCan()
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
+            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_RIGHT_ARROW, 0x0, 0x0, 0x0, 0x0};
+            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
+            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
+            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
           }
         }
         rotaryposition++;
@@ -678,8 +677,10 @@ void checkCan()
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
+            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_LEFT_ARROW, 0x0, 0x0, 0x0, 0x0};
+            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
+            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
+            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
           }
         }
         rotaryposition--;
@@ -784,22 +785,30 @@ void checkCan()
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
+          {
             Serial.print(" Kurz");
-            BPMod->keyboardPress(BP_KEY_ENTER,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
+          }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
+          {
             Serial.print(" Lang");
             //Zuletzt geöffnete Apps anzeigen
             //ALT + TAB, danach TAB loslassen und ALT gedrückt halten.
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_KEY_TAB);
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_MOD_NOMOD);
+            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_TAB, 0x0, 0x0, 0x0, 0x0};
+            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
+            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
+            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
             break;
+          }
           //Losgelassen
           case BUTTON_RELEASE:
+          {
             Serial.print(" Release");
             BPMod->keyboardReleaseAll();
             break;
+          }
           } //END BUTTON PRESS DURATION
           break;
           //BACK Button
@@ -808,17 +817,21 @@ void checkCan()
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
+          {
             //Zurück
-            BPMod->keyboardPress(BP_KEY_ESCAPE,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_ESCAPE, BP_MOD_NOMOD);
             BPMod->keyboardReleaseAll();
             break;
+          }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
             break;
           //Losgelassen
           case BUTTON_RELEASE:
+          {
             BPMod->keyboardReleaseAll();
             break;
+          }
           } //END BUTTON PRESS DURATION
           break;
           //OPTION Button
@@ -829,7 +842,7 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            BPMod->keyboardPress(BP_KEY_ESCAPE,BP_MOD_LEFT_CTRL);
+            BPMod->keyboardPress(BP_KEY_ESCAPE, BP_MOD_LEFT_CTRL);
             BPMod->keyboardReleaseAll();
             break;
           }
@@ -942,7 +955,7 @@ void checkCan()
           //Hoch (kurz)
         case 0x11:
           Serial.print(" Hoch Kurz");
-          BPMod->keyboardPress(BP_KEY_UP_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardPress(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
           BPMod->keyboardReleaseAll();
           break;
           //Hoch (lang)
@@ -951,7 +964,7 @@ void checkCan()
           break;
         //Rechts (kurz)
         case 0x21:
-          BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardPress(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
           BPMod->keyboardReleaseAll();
           break;
         //Rechts (lang)
@@ -959,7 +972,7 @@ void checkCan()
           break;
         //Runter (kurz)
         case 0x41:
-          BPMod->keyboardPress(BP_KEY_DOWN_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardPress(BP_KEY_DOWN_ARROW, BP_MOD_NOMOD);
           BPMod->keyboardReleaseAll();
           break;
         //Runter (lang)
@@ -967,7 +980,7 @@ void checkCan()
           break;
         //Links (kurz)
         case 0x81:
-          BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_NOMOD);
+          BPMod->keyboardPress(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
           BPMod->keyboardReleaseAll();
           break;
         //Links (lang)
