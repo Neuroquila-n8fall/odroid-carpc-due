@@ -369,7 +369,6 @@ void checkCan()
         //Knöpfe zurücksetzen
         MflButtonNextHold = false;
         MflButtonPrevHold = false;
-        BPMod->keyRelease();
       }
       //Next
       if (buf[0] == 0xE0 && buf[1] == 0x0C)
@@ -378,40 +377,41 @@ void checkCan()
           Sowohl beim Drücken als auch beim Loslassen wird eine Nachricht geschickt.
           Wenn der Knopf das erste Mal gedrückt wird, wird keine Aktion ausgeführt.
           Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut innerhalb einer Sekunde kommt (Knopf losgelassen) wird reagiert.
-          TODO: Es muss geprüft werden ob der Knopf immer wieder gesendet wird, wenn er gehalten wird.
+          Der gehaltene Knopf wird dauerhaft gesendet (ca alle 100ms). Daher muss gemessen werden, wann der Knopf losgelassen wurde um zu 
+          verhindern, dass beim Spulen zuerst NEXT gesendet wird, was den ganzen Prozess sinnfrei machen würde.
         */
-        //Der Knopf wurde innerhalb einer Sekunde losgelassen
+        //Der Knopf wird gehalten
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.println("[checkCan] Music NEXT");
-          BPMod->nextTrack();
+          Serial.println("[checkCan] Music FASTFORWARD");
+          BPMod->fastForwardAudio();
           BPMod->keyRelease();
         }
         else
         {
-          //Knopf wird gehalten
+          //Knopf wurde innerhalb eienr Sekunde losgelassen
           MflButtonNextHold = true;
-          Serial.println("[checkCan] Music FASTFORWARD");
-          BPMod->fastForwardAudio();
+          Serial.println("[checkCan] Music NEXT");
+          BPMod->nextTrack();
         }
         lastMflPress = currentMillis;
       }
       //Prev
       if (buf[0] == 0xD0 && buf[1] == 0x0C)
       {
-        //Der Knopf wurde innerhalb einer Sekunde losgelassen
+        //Der Knopf wurde gehalten
         if (currentMillis - lastMflPress < 1000)
         {
-          Serial.println("[checkCan] Music PREV");
-          BPMod->prevTrack();
+          Serial.println("[checkCan] Music REWIND");
+          BPMod->rewindAudio();
           BPMod->keyRelease();
         }
         else
         {
-          //Knopf wird gehalten
+          //Knopf wurde innerhalb einer Sekunde losgelassen
           MflButtonPrevHold = true;
-          Serial.println("[checkCan] Music REWIND");
-          BPMod->rewindAudio();
+          Serial.println("[checkCan] Music PREV");
+          BPMod->prevTrack();
         }
         lastMflPress = currentMillis;
       }
@@ -457,7 +457,6 @@ void checkCan()
     }
     case IDRIVE_CTRL_STATUS_ADDR:
     {
-      Serial.print("[checkCan] iDrive Controller Statusmeldung: ");
       if (buf[4] == 6)
       {
         Serial.println("Controller ist nicht initialisiert.");
@@ -467,10 +466,8 @@ void checkCan()
       }
       else
       {
-        Serial.println("Initialisiert.");
         iDriveInitSuccess = true;
       }
-      printCanMsg(canId, buf, len);
       break;
     }
     //CAS: Schlüssel Buttons
@@ -517,7 +514,7 @@ void checkCan()
       /*  
           Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
           In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
-          Das bedeutet, dass bei Lichteifnall von der Seite das Display abdunkelt und es unleserlich wird. Das kann sehr gut anhand der Armaturenbeleuchtung beobachtet werden.
+          Das bedeutet, dass bei Lichteinfall von der Seite das Display abdunkelt und es unleserlich wird. Das kann sehr gut anhand der Armaturenbeleuchtung beobachtet werden.
           Da es sich aber bei der Armaturenbeleuchtung um ein invertiertes Dot-Matrix LCD Display handelt, ist dies sogar unter direkter Sonneneinstrahlung perfekt lesbar.
       */
       int lightValue = buf[0];
@@ -538,11 +535,7 @@ void checkCan()
         val = 50;
       } */
 
-      //Wenn der Wert unverändert ist, nichts tun.
-      if (val == lastBrightness)
-      {
-        break;
-      }
+
 
       //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
       if (val > lastBrightness)
@@ -563,15 +556,21 @@ void checkCan()
           delay(10);
         }
       }
-      //letzten Wert zum Vergleich speichern
-      lastBrightness = val;
-
       //Ausgabe auf Konsole
       Serial.print("Helligkeit (Roh, Steuerwert):");
       Serial.print(String(lightValue, DEC));
       Serial.print('\t');
       Serial.print(val);
       Serial.println();
+      //Wenn der Wert unverändert ist, nichts tun.
+      if (val == lastBrightness)
+      {
+        break;
+      }
+
+      //letzten Wert zum Vergleich speichern
+      lastBrightness = val;
+
       break;
     }
     //Steuerung für Helligkeit der Armaturenbeleuchtung
@@ -580,17 +579,9 @@ void checkCan()
       //254 = AUS
       //Bereich: 0-253
       //Ab und zu wird 254 einfach so geschickt, wenn 0 vorher aktiv war...warum auch immer
-      Serial.print("Beleuchtung (Roh, Ctrl):");
+/*       Serial.print("Beleuchtung (Roh, Ctrl):");
       int dimRawVal = buf[0];
-      int dimBrightness = map(dimRawVal, 0, 253, 0, 100);
-      if (buf[0] == 254)
-      {
-        Serial.println("AUS = 254");
-        break;
-      }
-      Serial.print(buf[0]);
-      Serial.print(',');
-      Serial.println(dimBrightness);
+      int dimBrightness = map(dimRawVal, 0, 253, 0, 100); */
     }
     //Rückspiegel und dessen Lichtsensorik
     case 0x286:
@@ -654,34 +645,40 @@ void checkCan()
       //Hier wird einfach das Delta zwischen alter und neuer Position ausgeführt.
       while (rotaryposition < newpos)
       {
-        if (!iDriveInitSuccess)
+        if (iDriveInitSuccess)
         {
-          iDriveRotDir = ROTATION_RIGHT;
+          iDriveRotDir = ROTATION_LEFT;
           //Während der Menüknopf gedrückt ist (bzw. der Joystick gedrückt ist) kann man mit Drehung des Joysticks blättern
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_RIGHT_ARROW, 0x0, 0x0, 0x0, 0x0};
-            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
-            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
-            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_RIGHT_ALT,BP_MOD_NOMOD);
           }
+          else
+          {
+            BPMod->mouseWheel(-1);
+          }
+          
         }
         rotaryposition++;
       }
       while (rotaryposition > newpos)
       {
-        if (!iDriveInitSuccess)
+        if (iDriveInitSuccess)
         {
-          iDriveRotDir = ROTATION_LEFT;
+          iDriveRotDir = ROTATION_RIGHT;
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_LEFT_ARROW, 0x0, 0x0, 0x0, 0x0};
-            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
-            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
-            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
           }
+          else
+          {
+            BPMod->mouseWheel(1);
+          }
+          
         }
         rotaryposition--;
       }
@@ -713,10 +710,6 @@ void checkCan()
       //Knöpfe und Joystick
     case 0x267:
     {
-      //Zeitstempel
-      Serial.print(timeStamp + '\t');
-      Serial.print("[checkCan] iDrive:");
-      printCanMsg(canId, buf, len);
       //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
       int buttonCounter = buf[2];
 
@@ -753,11 +746,17 @@ void checkCan()
         }
         } //END BUTONPRESSTYPE
       }
+      else
+      {
+        previousIdriveButtonTimestamp = currentMillis;
+        return;
+      }
 
       //Egal wie der vorherige Status war wird beim Senden von "0" die Taste als losgelassen betrachtet.
       if (buttonPressType == 0x00)
       {
         iDriveBtnPress = BUTTON_RELEASE;
+        Serial.println("[iDrive] RELEASE");
       }
 
       //Zeitstempel des letzten Knopfdrucks merken.
@@ -796,10 +795,10 @@ void checkCan()
             Serial.print(" Lang");
             //Zuletzt geöffnete Apps anzeigen
             //ALT + TAB, danach TAB loslassen und ALT gedrückt halten.
-            byte keysToPress[6] = {BP_KEY_LEFT_ALT, BP_KEY_TAB, 0x0, 0x0, 0x0, 0x0};
-            byte keysToHold[6] = {BP_KEY_LEFT_ALT, 0x0, 0x0, 0x0, 0x0, 0x0};
-            BPMod->keyboardPressMulti(keysToPress, BP_MOD_NOMOD);
-            BPMod->keyboardPressMulti(keysToHold, BP_MOD_NOMOD);
+            byte keysToPress[6] = {BP_KEY_LEFT_ALT,BP_KEY_TAB,0x0,0x0,0x0,0x0};
+            byte keysToHold[6] = {BP_KEY_LEFT_ALT,0x0,0x0,0x0,0x0,0x0};
+            BPMod->keyboardPressMulti(keysToPress,BP_MOD_LEFT_ALT);
+            BPMod->keyboardPressMulti(keysToHold,BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
@@ -842,7 +841,7 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            BPMod->keyboardPress(BP_KEY_ESCAPE, BP_MOD_LEFT_CTRL);
+            BPMod->keyboardPress(0x76,BP_MOD_NOMOD);
             BPMod->keyboardReleaseAll();
             break;
           }
@@ -865,6 +864,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
+            BPMod->keyboardPress(BP_KEY_F5,BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -886,6 +886,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
+            BPMod->keyboardPress(BP_KEY_F6,BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -907,6 +908,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
+            BPMod->keyboardPress(BP_KEY_F7,BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -928,6 +930,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
+            BPMod->keyboardPress(BP_KEY_F8,BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt

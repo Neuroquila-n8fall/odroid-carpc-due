@@ -8,6 +8,8 @@ unsigned long previousCanMsgTimestamp = 0;
 const int CAS_DEBOUNCE_TIMEOUT = 1000;
 //Debounce für MFL Knopfdruck
 unsigned long lastMflPress = 0; 
+//Debounce Timestamp für MFL release
+unsigned long lastMflRelease = 0;
 //Ob der MFL Knopf "Next" gehalten wird
 bool MflButtonNextHold = false; 
 //Ob der MFL Knopf "Prev" gehalten wird
