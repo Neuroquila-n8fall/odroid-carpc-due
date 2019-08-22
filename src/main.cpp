@@ -151,6 +151,8 @@ void timeKeeper();
 void sendKey(uint8_t keycode);
 //Interaktion mit serieller Konsole
 void readConsole();
+//MFL Knöpfe Evaluieren
+void evaluateMflPresses();
 
 void setup()
 {
@@ -363,58 +365,64 @@ void checkCan()
     //MFL Knöpfe
     case 0x1D6:
     {
-      //Kein Knopf gedrückt (alle 100ms)
+      //Kein Knopf gedrückt (alle 1000ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
       {
         //Knöpfe zurücksetzen
         MflButtonNextHold = false;
         MflButtonPrevHold = false;
+        lastMflRelease = currentMillis;
       }
-      //Next
-      if (buf[0] == 0xE0 && buf[1] == 0x0C)
+
+      //Wenn innerhalb einer Zeitspanne das selbe Tastensignal gesendet wird, wird der Knopf als gehalten betrachtet, aber nur wenn der Schwellwert erreicht wurde
+      //Erneuter Tastendruck innerhalb von Zeit
+      if (currentMillis - lastMflPress <= 200)
       {
-        /*
-          Sowohl beim Drücken als auch beim Loslassen wird eine Nachricht geschickt.
-          Wenn der Knopf das erste Mal gedrückt wird, wird keine Aktion ausgeführt.
-          Die Zeit des Drückens wird gemessen. Erst wenn das Signal erneut innerhalb einer Sekunde kommt (Knopf losgelassen) wird reagiert.
-          Der gehaltene Knopf wird dauerhaft gesendet (ca alle 100ms). Daher muss gemessen werden, wann der Knopf losgelassen wurde um zu 
-          verhindern, dass beim Spulen zuerst NEXT gesendet wird, was den ganzen Prozess sinnfrei machen würde.
-        */
-        //Der Knopf wird gehalten
-        if (currentMillis - lastMflPress < 1000)
+        mflButtonCounter++;
+        //Wenn der Knopf seit bestimmter Zeit nicht gelöst wurde und der Schwellwert erreicht wurde
+        if (currentMillis - lastMflRelease >= mflButtonHoldTime && mflButtonCounter > mflButtonHoldThreshold)
         {
-          Serial.println("[checkCan] Music FASTFORWARD");
-          BPMod->fastForwardAudio();
-          BPMod->keyRelease();
+          //FASTFORWARD oder REWIND
+          //Next
+          if (buf[0] == 0xE0 && buf[1] == 0x0C)
+          {
+            Serial.println("[MFL] FASTFORWARD");
+            BPMod->fastForwardAudio();
+            BPMod->keyRelease();
+          }
+          //Prev
+          if (buf[0] == 0xD0 && buf[1] == 0x0C)
+          {
+            Serial.println("[MFL] REWIND");
+            BPMod->rewindAudio();
+            BPMod->keyRelease();
+          }
         }
-        else
+      }
+      //Der Knopf wurde vor dem Schwellwert losgelassen
+      if (currentMillis - lastMflPress > mflButtonHoldTime && mflButtonCounter <= mflButtonHoldThreshold)
+      {
+        //Zurücksetzen
+        mflButtonCounter = 0;
+        //PREV oder NEXT auslösen
+
+        //Next
+        if (buf[0] == 0xE0 && buf[1] == 0x0C)
         {
-          //Knopf wurde innerhalb eienr Sekunde losgelassen
-          MflButtonNextHold = true;
-          Serial.println("[checkCan] Music NEXT");
+          Serial.println("[MFL] NEXT");
           BPMod->nextTrack();
-        }
-        lastMflPress = currentMillis;
-      }
-      //Prev
-      if (buf[0] == 0xD0 && buf[1] == 0x0C)
-      {
-        //Der Knopf wurde gehalten
-        if (currentMillis - lastMflPress < 1000)
-        {
-          Serial.println("[checkCan] Music REWIND");
-          BPMod->rewindAudio();
           BPMod->keyRelease();
         }
-        else
+        //Prev
+        if (buf[0] == 0xD0 && buf[1] == 0x0C)
         {
-          //Knopf wurde innerhalb einer Sekunde losgelassen
-          MflButtonPrevHold = true;
-          Serial.println("[checkCan] Music PREV");
+          Serial.println("[MFL] PREV");
           BPMod->prevTrack();
+          BPMod->keyRelease();
         }
-        lastMflPress = currentMillis;
       }
+      lastMflPress = currentMillis;
+      
       //Pickup Button
       if (buf[0] == 0xC1 && buf[1] == 0x0C)
       {
@@ -472,6 +480,7 @@ void checkCan()
     }
     //CAS: Schlüssel Buttons
     case 0x23A:
+    {
       //Debounce: Befehle werden erst wieder verarbeitet, wenn der Timeout abgelaufen ist.
       if (currentMillis - previousCasMessageTimestamp > CAS_DEBOUNCE_TIMEOUT)
       {
@@ -505,14 +514,22 @@ void checkCan()
           }
           stopOdroid();
         }
-        //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste.
+        //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
       }
       break;
-    //Licht-, Solar- und Innenraumtemperatursensoren
-    case 0x32E:
+    }
+
+    case 0x314:
     {
-      /*  
-          Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet.
+      //PRalle Sonne
+      //[314]   50      0       FF
+      //Tuch drüber gelegt:
+      //[314]   11      8       FF
+
+      //unsigned int lightVal = (buf[1] << 8) + buf[0];
+      //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Vllt Regensensor?
+  /*  
+          Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet. Das ist definitiv der Solar Sensor!
           In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
           Das bedeutet, dass bei Lichteinfall von der Seite das Display abdunkelt und es unleserlich wird. Das kann sehr gut anhand der Armaturenbeleuchtung beobachtet werden.
           Da es sich aber bei der Armaturenbeleuchtung um ein invertiertes Dot-Matrix LCD Display handelt, ist dies sogar unter direkter Sonneneinstrahlung perfekt lesbar.
@@ -522,21 +539,14 @@ void checkCan()
       //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
-      //Bei wenig Licht abdimmen
-      if (lightValue < 3)
-      {
-        val = 150;
-      }
-
-      //Deaktiviert. Ist zu dunkel im Schatten...
-      /*       //Wenn keine Lichtdaten vorhanden sind oder es wirklich stockfinster ist...
-      if (lightValue == 0)
-      {
-        val = 50;
-      } */
-
-
-
+      int mappedControlValue = map(lightValue,0,80,50,255);
+      Serial.print("Licht (Roh, CTRL):\t");
+      Serial.print(lightValue);
+      Serial.print('\t');
+      Serial.print(buf[1]);
+      Serial.print('\t');
+      Serial.println(mappedControlValue);
+      val = mappedControlValue;
       //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
       if (val > lastBrightness)
       {
@@ -556,12 +566,6 @@ void checkCan()
           delay(10);
         }
       }
-      //Ausgabe auf Konsole
-      Serial.print("Helligkeit (Roh, Steuerwert):");
-      Serial.print(String(lightValue, DEC));
-      Serial.print('\t');
-      Serial.print(val);
-      Serial.println();
       //Wenn der Wert unverändert ist, nichts tun.
       if (val == lastBrightness)
       {
@@ -570,18 +574,25 @@ void checkCan()
 
       //letzten Wert zum Vergleich speichern
       lastBrightness = val;
+      break;
+    }
+    //Licht-, Solar- und Innenraumtemperatursensoren
+    case 0x32E:
+    {
+    
 
       break;
     }
-    //Steuerung für Helligkeit der Armaturenbeleuchtung
+    //Steuerung für Helligkeit der Armaturenbeleuchtung (Abblendlicht aktiv)
     case 0x202:
     {
       //254 = AUS
       //Bereich: 0-253
       //Ab und zu wird 254 einfach so geschickt, wenn 0 vorher aktiv war...warum auch immer
-/*       Serial.print("Beleuchtung (Roh, Ctrl):");
+      /*       Serial.print("Beleuchtung (Roh, Ctrl):");
       int dimRawVal = buf[0];
       int dimBrightness = map(dimRawVal, 0, 253, 0, 100); */
+      break;
     }
     //Rückspiegel und dessen Lichtsensorik
     case 0x286:
@@ -652,14 +663,13 @@ void checkCan()
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            BPMod->keyboardPress(BP_KEY_LEFT_ARROW,BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_RIGHT_ALT,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_LEFT_ARROW, BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_RIGHT_ALT, BP_MOD_NOMOD);
           }
           else
           {
             BPMod->mouseWheel(-1);
           }
-          
         }
         rotaryposition++;
       }
@@ -671,14 +681,13 @@ void checkCan()
           if (iDriveBtnPress == BUTTON_LONG_PRESS && lastKnownIdriveButtonType == IDRIVE_BUTTON_CENTER_MENU)
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
-            BPMod->keyboardPress(BP_KEY_RIGHT_ARROW,BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_RIGHT_ARROW, BP_MOD_LEFT_ALT);
+            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_MOD_NOMOD);
           }
           else
           {
             BPMod->mouseWheel(1);
           }
-          
         }
         rotaryposition--;
       }
@@ -771,6 +780,7 @@ void checkCan()
       //Aussortieren, ob der Knopf in eine Richtung gedrückt wurde oder ob ein Funktionsknopf gedrückt wurde.
       if (inputType != IDRIVE_JOYSTICK)
       {
+        printCanMsg(canId, buf, len);
         //Zeitstempel
         Serial.print(timeStamp + '\t');
         Serial.print("[iDrive] Knopf ");
@@ -779,6 +789,7 @@ void checkCan()
         {
         //Joystick oder Menüknopf
         case IDRIVE_BUTTON_CENTER_MENU:
+        {
           Serial.print(" CENTER oder MENÜ");
           switch (iDriveBtnPress)
           {
@@ -787,18 +798,14 @@ void checkCan()
           {
             Serial.print(" Kurz");
             BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
+            BPMod->keyboardReleaseAll();
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
             Serial.print(" Lang");
-            //Zuletzt geöffnete Apps anzeigen
-            //ALT + TAB, danach TAB loslassen und ALT gedrückt halten.
-            byte keysToPress[6] = {BP_KEY_LEFT_ALT,BP_KEY_TAB,0x0,0x0,0x0,0x0};
-            byte keysToHold[6] = {BP_KEY_LEFT_ALT,0x0,0x0,0x0,0x0,0x0};
-            BPMod->keyboardPressMulti(keysToPress,BP_MOD_LEFT_ALT);
-            BPMod->keyboardPressMulti(keysToHold,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
@@ -810,8 +817,11 @@ void checkCan()
           }
           } //END BUTTON PRESS DURATION
           break;
+        }
           //BACK Button
         case IDRIVE_BUTTON_BACK:
+        {
+          Serial.println(" BACK ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -824,6 +834,7 @@ void checkCan()
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
+            BPMod->keyboardPress(BP_KEY_F10, BP_MOD_NOMOD);
             break;
           //Losgelassen
           case BUTTON_RELEASE:
@@ -833,15 +844,18 @@ void checkCan()
           }
           } //END BUTTON PRESS DURATION
           break;
+        }
           //OPTION Button
         case IDRIVE_BUTTON_OPTION:
+        {
+          Serial.println(" OPTION ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            BPMod->keyboardPress(0x76,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F9, BP_MOD_NOMOD);
             BPMod->keyboardReleaseAll();
             break;
           }
@@ -857,14 +871,18 @@ void checkCan()
             break;
           }
           } //END BUTTON PRESS DURATION
+          break;
+        }
           //RADIO Button
         case IDRIVE_BUTTON_RADIO:
+        {
+          Serial.println(" RADIO ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F5,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F5, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -878,15 +896,20 @@ void checkCan()
             BPMod->keyboardReleaseAll();
             break;
           }
+
           } //END BUTTON PRESS DURATION
+          break;
+        }
           //CD Button
         case IDRIVE_BUTTON_CD:
+        {
+          Serial.println(" CD ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F6,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F6, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -901,14 +924,18 @@ void checkCan()
             break;
           }
           } //END BUTTON PRESS DURATION
+          break;
+        }
           //NAV Button
         case IDRIVE_BUTTON_NAV:
+        {
+          Serial.println(" NAV ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F7,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F7, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -923,14 +950,18 @@ void checkCan()
             break;
           }
           } //END BUTTON PRESS DURATION
+          break;
+        }
           //TEL Button
         case IDRIVE_BUTTON_TEL:
+        {
+          Serial.println(" TEL ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F8,BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F8, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -945,9 +976,13 @@ void checkCan()
             break;
           }
           } //END BUTTON PRESS DURATION
+          break;
+        }
         default:
+        {
           break;
         } //END BUTTON PRESS
+        }
         previousIdriveButton = buttonType;
       }
       else
@@ -1261,5 +1296,27 @@ void readConsole()
   if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
+  }
+}
+
+void evaluateMflPresses()
+{
+  //Wenn innerhalb einer Zeitspanne das selbe Tastensignal gesendet wird, wird der Knopf als gehalten betrachtet, aber nur wenn der Schwellwert erreicht wurde
+  //Erneuter Tastendruck innerhalb von Zeit
+  if (millis() - lastMflPress <= 200)
+  {
+    mflButtonCounter++;
+    //Wenn der Knopf seit bestimmter Zeit nicht gelöst wurde und der Schwellwert erreicht wurde
+    if (millis() - lastMflRelease >= mflButtonHoldTime && mflButtonCounter > mflButtonHoldThreshold)
+    {
+      //FASTFORWARD oder REWIND
+    }
+  }
+  //Der Knopf wurde vor dem Schwellwert losgelassen
+  if (millis() - lastMflRelease < mflButtonHoldTime)
+  {
+    //Zurücksetzen
+    mflButtonCounter = 0;
+    //PREV oder NEXT auslösen
   }
 }

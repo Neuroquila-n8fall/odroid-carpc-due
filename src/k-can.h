@@ -14,6 +14,12 @@ unsigned long lastMflRelease = 0;
 bool MflButtonNextHold = false; 
 //Ob der MFL Knopf "Prev" gehalten wird
 bool MflButtonPrevHold = false; 
+//MFL Button Counter 
+int mflButtonCounter = 0;
+//MFL Button HOLD Threshold: Nach wie vielen Wiederholungen wird der Knopf als gehalten betrachtet.
+int mflButtonHoldThreshold = 3;
+//MFL HOLD Time: Innerhalb wie vieler ms mflButtonHoldThreshold erreicht werden muss.
+unsigned int mflButtonHoldTime = 1000;
 
 //    iDrive
 
