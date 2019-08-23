@@ -11,9 +11,9 @@ unsigned long lastMflPress = 0;
 //Debounce Timestamp für MFL release
 unsigned long lastMflRelease = 0;
 //Ob der MFL Knopf "Next" gehalten wird
-bool MflButtonNextHold = false; 
+bool MflButtonNextPressed = false; 
 //Ob der MFL Knopf "Prev" gehalten wird
-bool MflButtonPrevHold = false; 
+bool MflButtonPrevPressed = false; 
 //MFL Button Counter 
 int mflButtonCounter = 0;
 //MFL Button HOLD Threshold: Nach wie vielen Wiederholungen wird der Knopf als gehalten betrachtet.

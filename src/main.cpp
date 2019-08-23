@@ -7,152 +7,13 @@
   Projektbezogene Header
 */
 #include <k-can.h>
-
-//Opto 2 - Zündung Aktiv
-const int PIN_IGNITION_INPUT = 6;
-//Eingang Odroid Power Button. Wenn dieser HIGH ist, ist der Odroid aktiv.
-const int PIN_ODROID_POWER_INPUT = 7;
-//Ausgang Odroid Power Button
-const int PIN_ODROID_POWER_BUTTON = 8;
-//Power Button vom Display
-const int PIN_ODROID_DISPLAY_POWER_BUTTON = 9;
-//CAN CS Pin
-const int SPI_CS_PIN = 10;
-//Pin für Display Helligkeit
-const int PIN_VU7A_BRIGHTNESS = 5;
-//Pin für Debug Switch
-const int PIN_DEBUG = 53;
-
-/*
-
-CAN Wiring:
-
-<CPU is here>
-
-Reset SCK   MISO
-.     .     .       
-.     .     .       
-GND   MOSI  5V      
-
-*/
-
-//2 Sekunden für Aufwecken
-const int ODROID_BOOT_HOLD_DELAY = 2100;
-//5 Sekunden zum Herunterfahren (Lineage braucht nur 1 Sekunde bei aktivierung der Option "Shutdown without prompt")
-const int ODROID_SHUTDOWN_HOLD_DELAY = 1000;
-
-int odroidRunning = LOW; //Ergebnis vom Odroid GPIO #1. LOW = aus, HIGH = an
-
-int lastIgnitionState = HIGH; //Hält den letzten Zündungsstatus
-
-const int CYCLE_DELAY = 500; //Verzögerung in ms pro Schleifendurchlauf
-
-unsigned long previousOdroidActionTime = 0;  //Vorherige Zeitmessung für Odroid Steuerung
-unsigned long previousMainTaskTime = 0;      //Vorherige Zeitmessung für allgemeinen Timer
-unsigned long previousIgnitionCheckTime = 0; //Vorherige Zeitmessung für Zündungsstatus
-unsigned long previousOdroidPauseTime = 0;   //Vorherige Zeitmessung für Odroid Sleepmodus
-
-bool odroidStartRequested = false;    //Start von Odroid angefordert
-bool odroidShutdownRequested = false; //Stop von Odroid angefordert
-bool odroidPauseRequested = false;    //Sleep oder Wakeup angefordert
-
-bool startup = true; //Steuerung ist gerade angelaufen.
-
-bool debugMode = false; //Debugmodus aktiv?
-
-int ignitionOn = HIGH; //Zündung - HIGH = Aus, LOW = An
-
-const int ODROID_STANDBY_HOLD_DELAY = 100;       //Button Press für Display und Sleep.
-const unsigned long WAKEUP_WAIT_DELAY = 10000;   //10 Sekunden Wartezeit für Aufwecken
-const unsigned long STARTUP_WAIT_DELAY = 60000;  //Wartezeit für Start
-const unsigned long SHUTDOWN_WAIT_DELAY = 60000; //Wartezeit für Herunterfahren
-unsigned long startPowerTransitionMillis = 0;    //Counter für den Aufweck- und Herunterfahrprozess
-const unsigned long ODROID_STANDBY_DELAY = 5000; //Wartzeit für Sleepfunktion
-
-//Geschwindigkeit der Seriellen Schnittstelle "Serial"
-const int serialBaud = 115200;
+#include <main.h>
 
 //CAN Modul initialisieren
 MCP_CAN CAN(SPI_CS_PIN);
 
-//zuletzt errechneter Helligkeitswert für Display.
-int lastBrightness = 0;
-
-//Stunden
-int hours = 0;
-//Minuten
-int minutes = 0;
-//Sekunden
-int seconds = 0;
-//Tag
-int days = 0;
-//Monat
-int month = 0;
-//Jahr
-int year = 0;
-//Langer Zeitstempel
-char timeStamp[20] = "00:00:00 00.00.0000";
-//Uhrzeit als Text
-char timeString[9] = "00:00:00";
-//Datum als Text
-char dateString[11] = "00.00.0000";
-
-//Initialstatus der eingebauten LED
-int ledState = LOW;
-
 //BT Library
 BPLib *BPMod;
-
-//Zeitstempel für Sekundentimer
-unsigned long previousOneSecondTick = 0;
-
-//Mögliche Aktionen
-enum PendingAction
-{
-  ODROID_START,
-  ODROID_STOP,
-  ODROID_STANDBY,
-  NONE
-};
-//Beinhaltet die aktuelle Aktion, welche ausgeführt wird oder werden soll.
-//Sofern diese nicht NONE ist, können keine weiteren Aktionen ausgeführt werden.
-//Dies soll doppelte Ausführungen von Start & Stop während der Hoch- und Herunterfahrphase des PCs verhindern
-PendingAction pendingAction = NONE;
-
-//Hier wird gespeichert, ob nach dem Ausführen einer Aktion eine weitere folgt
-//Beispiel: Das Auto wird aufgesperrt und innerhalb des Startup-Intervalls wieder zugesperrt. Der PC würde nun eingeschaltet bleiben.
-//Hier würde nun gespeichert werden, dass der PC wieder heruntergefahren werden soll, sobald der Timer abgelaufen ist.
-PendingAction queuedAction = NONE;
-
-//Status der Zündung abrufen und entsprechende Aktionen auslösen
-void checkIgnitionState();
-//Start bzw. Aufwecken
-void startOdroid();
-//Sofortiges geordnetes Herunterfahren
-void stopOdroid();
-//Odroid in Sleep versetzen und Display ausschalten
-void pauseOdroid();
-//Ein- und Ausgänge prüfen
-void checkPins();
-//CAN Nachrichten prüfen
-void checkCan();
-//Zeitstempel bauen
-void buildtimeStamp();
-//CAN Nachrichten auf der Konsole ausgeben
-void printCanMsg(int canId, unsigned char *buffer, int len);
-//CAN Output als CSV
-void printCanMsgCsv(int canId, unsigned char *buffer, int len);
-//Mausrad simulieren, je nachdem in welche Richtung der iDrive Knopf gedreht wurde.
-void scrollScreen();
-//Uhrzeit pflegen. Ist ausschließlich dazu da die Uhrzeit voran schreiten zu lassen, wenn der Canbus inaktiv ist und keine Zeit vom Auto kommt.
-//Die RTC Library kommt leider nicht in Frage da mein DUE board wohl keinen Kristall für RTC hat und daher der MCU einfriert beim initialisieren.
-void timeKeeper();
-//Taste drücken und sofort wieder freigeben
-void sendKey(uint8_t keycode);
-//Interaktion mit serieller Konsole
-void readConsole();
-//MFL Knöpfe Evaluieren
-void evaluateMflPresses();
 
 void setup()
 {
@@ -368,10 +229,30 @@ void checkCan()
       //Kein Knopf gedrückt (alle 1000ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
       {
+        //Taste wurde losgelassen und zuvor nicht lang genug gedrückt gehalten.
+        if (mflButtonCounter < mflButtonHoldThreshold)
+        {
+          //NEXT oder PREV
+          if (MflButtonNextPressed)
+          {
+            Serial.println("[MFL] NEXT");
+            BPMod->nextTrack();
+            BPMod->keyRelease();
+          }
+          if (MflButtonPrevPressed)
+          {
+            Serial.println("[MFL] PREV");
+            BPMod->prevTrack();
+            BPMod->keyRelease();
+          }
+        }
         //Knöpfe zurücksetzen
-        MflButtonNextHold = false;
-        MflButtonPrevHold = false;
+        MflButtonNextPressed = false;
+        MflButtonPrevPressed = false;
+        //Zeitstempel merken
         lastMflRelease = currentMillis;
+        //Counter zurücksetzen
+        mflButtonCounter = 0;
       }
 
       //Wenn innerhalb einer Zeitspanne das selbe Tastensignal gesendet wird, wird der Knopf als gehalten betrachtet, aber nur wenn der Schwellwert erreicht wurde
@@ -399,30 +280,19 @@ void checkCan()
           }
         }
       }
-      //Der Knopf wurde vor dem Schwellwert losgelassen
-      if (currentMillis - lastMflPress > mflButtonHoldTime && mflButtonCounter <= mflButtonHoldThreshold)
+      //Next
+      if (buf[0] == 0xE0 && buf[1] == 0x0C)
       {
-        //Zurücksetzen
-        mflButtonCounter = 0;
-        //PREV oder NEXT auslösen
-
-        //Next
-        if (buf[0] == 0xE0 && buf[1] == 0x0C)
-        {
-          Serial.println("[MFL] NEXT");
-          BPMod->nextTrack();
-          BPMod->keyRelease();
-        }
-        //Prev
-        if (buf[0] == 0xD0 && buf[1] == 0x0C)
-        {
-          Serial.println("[MFL] PREV");
-          BPMod->prevTrack();
-          BPMod->keyRelease();
-        }
+        MflButtonNextPressed = true;
       }
+      //Prev
+      if (buf[0] == 0xD0 && buf[1] == 0x0C)
+      {
+        MflButtonPrevPressed = true;
+      }
+
       lastMflPress = currentMillis;
-      
+
       //Pickup Button
       if (buf[0] == 0xC1 && buf[1] == 0x0C)
       {
@@ -502,6 +372,8 @@ void checkCan()
           previousIdriveInitTimestamp = currentMillis;
           //Zur Kontrolle die Instrumentenbeleuchtung einschalten.
           CAN.sendMsgBuf(DASHBOARD_LIGHTING_ADDR, 0, 8, DASHBOARD_LIGHTING_ON);
+          //Displayhelligkeit auf Maximum
+          analogWrite(PIN_VU7A_BRIGHTNESS, 255);
         }
         //Schließen:  00DF40FF
         if (buf[0] == 0x00 && buf[1] == 0x30 && buf[2] == 0x04 && buf[3] == 0x60)
@@ -513,6 +385,8 @@ void checkCan()
             Serial.println("[checkCan] PC wird nach dem Starten wieder heruntergefahren.");
           }
           stopOdroid();
+          //Displayhelligkeit auf vertretbares Minimum
+          analogWrite(PIN_VU7A_BRIGHTNESS, 50);
         }
         //Kofferraum: Wird nur gesendet bei langem Druck auf die Taste
       }
@@ -521,32 +395,27 @@ void checkCan()
 
     case 0x314:
     {
-      //PRalle Sonne
+      //Pralle Sonne:
       //[314]   50      0       FF
       //Tuch drüber gelegt:
       //[314]   11      8       FF
 
       //unsigned int lightVal = (buf[1] << 8) + buf[0];
       //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Vllt Regensensor?
-  /*  
-          Lichtsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet. Das ist definitiv der Solar Sensor!
-          In der Dämmerung tauchen werte niedriger als 2 auf. Selbst das Parken am helligsten Tag unter einem Baum wirft Werte um 2 aus.
-          Das bedeutet, dass bei Lichteinfall von der Seite das Display abdunkelt und es unleserlich wird. Das kann sehr gut anhand der Armaturenbeleuchtung beobachtet werden.
-          Da es sich aber bei der Armaturenbeleuchtung um ein invertiertes Dot-Matrix LCD Display handelt, ist dies sogar unter direkter Sonneneinstrahlung perfekt lesbar.
-      */
+
       int lightValue = buf[0];
 
       //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
-      int mappedControlValue = map(lightValue,0,80,50,255);
+      val = map(lightValue, 0, 80, 50, 255);
       Serial.print("Licht (Roh, CTRL):\t");
       Serial.print(lightValue);
       Serial.print('\t');
       Serial.print(buf[1]);
       Serial.print('\t');
-      Serial.println(mappedControlValue);
-      val = mappedControlValue;
+      Serial.println(val);
+
       //Wenn der aktuelle Wert größer als der zuletzt gespeicherte ist, zählen wir vom letzten Wert hoch.
       if (val > lastBrightness)
       {
@@ -566,9 +435,11 @@ void checkCan()
           delay(10);
         }
       }
-      //Wenn der Wert unverändert ist, nichts tun.
+
+      //Wenn der Wert unverändert ist zur Sicherheit nochmals letzten Wert schreiben.
       if (val == lastBrightness)
       {
+        analogWrite(PIN_VU7A_BRIGHTNESS, val);
         break;
       }
 
@@ -579,8 +450,13 @@ void checkCan()
     //Licht-, Solar- und Innenraumtemperatursensoren
     case 0x32E:
     {
-    
-
+      //Byte #0 ist der Solarsensor mittig auf dem Armaturenbrett
+      /*  
+          Solarsensor auf Byte 0: Startet bei 0, in Praller Sonne wurde 73 zuletzt gemeldet. Das ist definitiv der Solar Sensor!
+          Dummerweise wir der Sensor manchmal vom Displaygehäuse verdeckt, je nachdem wie die Sonne einfällt. Macht halt das ganze
+          Kontrukt teilweise unbruachbar...
+      */
+      //Byte 4 ist der IR Sensor im Klimabedienteil. Offenbar arbeitet dieser auch mit den Zonensensoren mit.
       break;
     }
     //Steuerung für Helligkeit der Armaturenbeleuchtung (Abblendlicht aktiv)
@@ -591,7 +467,7 @@ void checkCan()
       //Ab und zu wird 254 einfach so geschickt, wenn 0 vorher aktiv war...warum auch immer
       /*       Serial.print("Beleuchtung (Roh, Ctrl):");
       int dimRawVal = buf[0];
-      int dimBrightness = map(dimRawVal, 0, 253, 0, 100); */
+      */
       break;
     }
     //Rückspiegel und dessen Lichtsensorik
@@ -664,7 +540,7 @@ void checkCan()
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
             BPMod->keyboardPress(BP_KEY_LEFT_ARROW, BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_RIGHT_ALT, BP_MOD_NOMOD);
+            BPMod->keyboardRelease(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
           }
           else
           {
@@ -682,7 +558,7 @@ void checkCan()
           {
             //Taste drücken und ALT gedrückt halten, danach Taste wieder loslassen aber ALT gedrückt halten
             BPMod->keyboardPress(BP_KEY_RIGHT_ARROW, BP_MOD_LEFT_ALT);
-            BPMod->keyboardPress(BP_KEY_LEFT_ALT, BP_MOD_NOMOD);
+            BPMod->keyboardRelease(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
           }
           else
           {
@@ -797,8 +673,7 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             Serial.print(" Kurz");
-            BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardPressOnce(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -812,7 +687,7 @@ void checkCan()
           case BUTTON_RELEASE:
           {
             Serial.print(" Release");
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardRelease(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -828,8 +703,7 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Zurück
-            BPMod->keyboardPress(BP_KEY_ESCAPE, BP_MOD_NOMOD);
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardPressOnce(BP_KEY_ESCAPE, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -839,7 +713,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardRelease(BP_KEY_F10, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -855,19 +729,19 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            BPMod->keyboardPress(BP_KEY_F9, BP_MOD_NOMOD);
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardPressOnce(BP_KEY_F9, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
+            BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
+            BPMod->keyboardRelease(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -882,7 +756,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F5, BP_MOD_NOMOD);
+            BPMod->keyboardPressOnce(BP_KEY_F5, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -893,7 +767,6 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
             break;
           }
 
@@ -909,7 +782,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F6, BP_MOD_NOMOD);
+            BPMod->keyboardPressOnce(BP_KEY_F6, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -920,7 +793,6 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -935,7 +807,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F7, BP_MOD_NOMOD);
+            BPMod->keyboardPressOnce(BP_KEY_F7, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -946,7 +818,6 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -961,7 +832,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F8, BP_MOD_NOMOD);
+            BPMod->keyboardPressOnce(BP_KEY_F8, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -972,7 +843,6 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardReleaseAll();
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -993,8 +863,7 @@ void checkCan()
           //Hoch (kurz)
         case 0x11:
           Serial.print(" Hoch Kurz");
-          BPMod->keyboardPress(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
-          BPMod->keyboardReleaseAll();
+          BPMod->keyboardPressOnce(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
           break;
           //Hoch (lang)
         case 0x12:
@@ -1002,24 +871,21 @@ void checkCan()
           break;
         //Rechts (kurz)
         case 0x21:
-          BPMod->keyboardPress(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
-          BPMod->keyboardReleaseAll();
+          BPMod->keyboardPressOnce(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
           break;
         //Rechts (lang)
         case 0x22:
           break;
         //Runter (kurz)
         case 0x41:
-          BPMod->keyboardPress(BP_KEY_DOWN_ARROW, BP_MOD_NOMOD);
-          BPMod->keyboardReleaseAll();
+          BPMod->keyboardPressOnce(BP_KEY_DOWN_ARROW, BP_MOD_NOMOD);
           break;
         //Runter (lang)
         case 0x42:
           break;
         //Links (kurz)
         case 0x81:
-          BPMod->keyboardPress(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
-          BPMod->keyboardReleaseAll();
+          BPMod->keyboardPressOnce(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
           break;
         //Links (lang)
         case 0x82:
@@ -1296,27 +1162,5 @@ void readConsole()
   if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
-  }
-}
-
-void evaluateMflPresses()
-{
-  //Wenn innerhalb einer Zeitspanne das selbe Tastensignal gesendet wird, wird der Knopf als gehalten betrachtet, aber nur wenn der Schwellwert erreicht wurde
-  //Erneuter Tastendruck innerhalb von Zeit
-  if (millis() - lastMflPress <= 200)
-  {
-    mflButtonCounter++;
-    //Wenn der Knopf seit bestimmter Zeit nicht gelöst wurde und der Schwellwert erreicht wurde
-    if (millis() - lastMflRelease >= mflButtonHoldTime && mflButtonCounter > mflButtonHoldThreshold)
-    {
-      //FASTFORWARD oder REWIND
-    }
-  }
-  //Der Knopf wurde vor dem Schwellwert losgelassen
-  if (millis() - lastMflRelease < mflButtonHoldTime)
-  {
-    //Zurücksetzen
-    mflButtonCounter = 0;
-    //PREV oder NEXT auslösen
   }
 }
