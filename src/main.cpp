@@ -673,21 +673,21 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             Serial.print(" Kurz");
-            BPMod->keyboardPressOnce(BP_KEY_ENTER, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
             Serial.print(" Lang");
-            BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
+            //BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
           case BUTTON_RELEASE:
           {
             Serial.print(" Release");
-            BPMod->keyboardRelease(BP_KEY_F11, BP_MOD_NOMOD);
+            BPMod->keyboardRelease(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -703,17 +703,17 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Zurück
-            BPMod->keyboardPressOnce(BP_KEY_ESCAPE, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_ESCAPE, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
-            BPMod->keyboardPress(BP_KEY_F10, BP_MOD_NOMOD);
+            //BPMod->keyboardPress(BP_KEY_F10, BP_MOD_NOMOD);
             break;
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardRelease(BP_KEY_F10, BP_MOD_NOMOD);
+            BPMod->keyboardRelease(BP_KEY_ESCAPE, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -729,19 +729,19 @@ void checkCan()
           case BUTTON_SHORT_PRESS:
           {
             //Menü aufrufen
-            BPMod->keyboardPressOnce(BP_KEY_F9, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F9, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
-            BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
+            //BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            BPMod->keyboardRelease(BP_KEY_F11, BP_MOD_NOMOD);
+            BPMod->keyboardRelease(BP_KEY_F9, BP_MOD_NOMOD);
             break;
           }
           } //END BUTTON PRESS DURATION
@@ -756,7 +756,7 @@ void checkCan()
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            BPMod->keyboardPressOnce(BP_KEY_F5, BP_MOD_NOMOD);
+            BPMod->keyboardPress(BP_KEY_F5, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
@@ -767,6 +767,7 @@ void checkCan()
           //Losgelassen
           case BUTTON_RELEASE:
           {
+            BPMod->keyboardRelease(BP_KEY_F5, BP_MOD_NOMOD);
             break;
           }
 
