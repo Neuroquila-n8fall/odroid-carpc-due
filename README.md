@@ -31,7 +31,7 @@ W.I.P.
 
 ## Questions I got asked...
 - Why an Arduino Due?
-Well...it's 84mhz CPU is capable of handling all the canbus chatter if you desire so. At it's current state the overall load could be handled by a 16mhz CPU aswell... I found it much more responding than its little cousins
+Well...it's 84mhz CPU is capable of handling all the canbus chatter if you desire so. At the current state the overall load could be handled by a 16mhz CPU aswell but I found the Due much more responding than its little cousins
 - Why???
 Because I always felt the need to include a full blown car pc into my car but the original iDrive system is just too limited. I want a brwosable music library with cloud sync, internet, the precious Torque app, ...all the good stuff!
 The icing on the cake was the decision to go the extra mile and swap the center console and install an iDrive 7-Button control unit. It looks like OEM but it does much, much more.

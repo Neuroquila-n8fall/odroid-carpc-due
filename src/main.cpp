@@ -8,6 +8,9 @@
 */
 #include <k-can.h>
 #include <main.h>
+#include <k-can-addresses.h>
+#include <k-can-messages.h>
+#include <idrive-controls.h>
 
 //CAN Modul initialisieren
 MCP_CAN CAN(SPI_CS_PIN);
@@ -224,7 +227,7 @@ void checkCan()
     switch (canId)
     {
     //MFL Knöpfe
-    case 0x1D6:
+    case MFL_BUTTON_ADDR:
     {
       //Kein Knopf gedrückt (alle 1000ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
@@ -304,7 +307,7 @@ void checkCan()
       break;
     }
     //CAS: Schlüssel & Zündung
-    case 0x130:
+    case CAS_ADDR:
     {
       //Wakeup Signal vom CAS --> Alle Steuergeräte aufwecken
       //Wird alle 100ms geschickt
@@ -322,7 +325,7 @@ void checkCan()
       break;
     }
     //CIC
-    case 0x273:
+    case CIC_ADDR:
     {
       Serial.print("CIC\t");
       printCanMsg(canId, buf, len);
@@ -392,8 +395,8 @@ void checkCan()
       }
       break;
     }
-
-    case 0x314:
+    //RLS Lichtsensorik
+    case RLS_ADDR:
     {
       //Pralle Sonne:
       //[314]   50      0       FF
@@ -401,7 +404,7 @@ void checkCan()
       //[314]   11      8       FF
 
       //unsigned int lightVal = (buf[1] << 8) + buf[0];
-      //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Vllt Regensensor?
+      //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Dieses byte wechselt jedenfalls nach 8, wenn dann auch das Abblendlicht angeht.
 
       int lightValue = buf[0];
 
@@ -448,7 +451,7 @@ void checkCan()
       break;
     }
     //Licht-, Solar- und Innenraumtemperatursensoren
-    case 0x32E:
+    case IHKA_ADDR:
     {
       //Byte #0 ist der Solarsensor mittig auf dem Armaturenbrett
       /*  
@@ -460,7 +463,7 @@ void checkCan()
       break;
     }
     //Steuerung für Helligkeit der Armaturenbeleuchtung (Abblendlicht aktiv)
-    case 0x202:
+    case LM_DIM_ADDR:
     {
       //254 = AUS
       //Bereich: 0-253
@@ -471,7 +474,7 @@ void checkCan()
       break;
     }
     //Rückspiegel und dessen Lichtsensorik
-    case 0x286:
+    case SPIEGEL_ABBLEND_ADDR:
     {
       break;
     }
@@ -479,7 +482,7 @@ void checkCan()
     //iDrive Controller
 
     //iDrive Controller: Drehung
-    case 0x264:
+    case IDRIVE_CTRL_ROT_ADDR:
     {
       //Byte 2 beinhaltet den counter
       //Byte 3 Counter Geschwindigkeit der Drehrichtung:
@@ -593,7 +596,7 @@ void checkCan()
     } //END ROTARY
 
       //Knöpfe und Joystick
-    case 0x267:
+    case IDRIVE_CTRL_BTN_ADDR:
     {
       //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
       int buttonCounter = buf[2];
@@ -857,18 +860,15 @@ void checkCan()
         previousIdriveButton = buttonType;
       }
       else
-      {
-        Serial.print(" Joystick");
+      {        
         switch (buttonPressType)
         {
           //Hoch (kurz)
-        case 0x11:
-          Serial.print(" Hoch Kurz");
+        case 0x11:          
           BPMod->keyboardPressOnce(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
           break;
           //Hoch (lang)
-        case 0x12:
-          Serial.print(" Hoch Lang");
+        case 0x12:          
           break;
         //Rechts (kurz)
         case 0x21:
@@ -895,13 +895,11 @@ void checkCan()
           break;
         } //END DIRECTION
       }
-      //Zeile beenden.
-      Serial.println();
       break;
     }
 
-    //PDC
-    case 0x1C2:
+    //PDC 1
+    case PDC_ABSTANDSMELDUNG_1_ADDR:
     {
       /*       //Byte 0~3 = Hinten
       //Byte 4~7 = Vorne
@@ -920,7 +918,7 @@ void checkCan()
       break;
     }
     //Rückwärtsgang
-    case 0x3B0:
+    case LM_REVERSESTATUS_ADDR:
     {
       if (buf[0] == 0xFD)
       {
@@ -933,7 +931,7 @@ void checkCan()
       break;
     }
     //Batteriespannung und Status
-    case 0x3B4:
+    case DMEDDE_POWERMGMT_BATTERY_ADDR:
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       //float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
@@ -953,7 +951,7 @@ void checkCan()
       break;
     }
     //Uhrzeit
-    case 0x2F8:
+    case KOMBI_DATETIME_ADDR:
     {
       //Merken, wann das letzte mal diese Nachricht empfangen wurde.
       previousCanDateTime = millis();
@@ -1085,9 +1083,9 @@ void stopOdroid()
 
 void buildtimeStamp()
 {
-  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%4d", hours, minutes, seconds, days, month, year);
+  sprintf(timeStamp, "[%02d:%02d:%02d %02d.%02d.%u]", hours, minutes, seconds, days, month, year);
   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
-  sprintf(dateString, "%02d.%02d.%4d", days, month, year);
+  sprintf(dateString, "%02d.%02d.%u]", days, month, year);
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -1163,5 +1161,20 @@ void readConsole()
   if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
+    if(command == "pc.stop")
+    {
+      stopOdroid();
+    }
+    if(command == "pc.start")
+    {
+      startOdroid();
+    }
+    if(command == "pc.pause")
+    {
+      pauseOdroid();
+    }
+    if(command == "car.testcan")
+    {      
+    }
   }
 }
