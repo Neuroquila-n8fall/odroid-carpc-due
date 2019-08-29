@@ -660,36 +660,29 @@ void checkCan()
       if (inputType != IDRIVE_JOYSTICK)
       {
         printCanMsg(canId, buf, len);
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
-        Serial.print("[iDrive] Knopf ");
         //Knöpfe entsprechend nach Typ behandeln
         switch (buttonType)
         {
         //Joystick oder Menüknopf
         case IDRIVE_BUTTON_CENTER_MENU:
         {
-          Serial.print(" CENTER oder MENÜ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            Serial.print(" Kurz");
             BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
-            Serial.print(" Lang");
             //BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Serial.print(" Release");
             BPMod->keyboardRelease(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
@@ -699,7 +692,6 @@ void checkCan()
           //BACK Button
         case IDRIVE_BUTTON_BACK:
         {
-          Serial.println(" BACK ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -725,7 +717,6 @@ void checkCan()
           //OPTION Button
         case IDRIVE_BUTTON_OPTION:
         {
-          Serial.println(" OPTION ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -753,7 +744,6 @@ void checkCan()
           //RADIO Button
         case IDRIVE_BUTTON_RADIO:
         {
-          Serial.println(" RADIO ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -780,7 +770,6 @@ void checkCan()
           //CD Button
         case IDRIVE_BUTTON_CD:
         {
-          Serial.println(" CD ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -805,7 +794,6 @@ void checkCan()
           //NAV Button
         case IDRIVE_BUTTON_NAV:
         {
-          Serial.println(" NAV ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -830,7 +818,6 @@ void checkCan()
           //TEL Button
         case IDRIVE_BUTTON_TEL:
         {
-          Serial.println(" TEL ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -860,36 +847,36 @@ void checkCan()
         previousIdriveButton = buttonType;
       }
       else
-      {        
+      {
         switch (buttonPressType)
         {
           //Hoch (kurz)
-        case 0x11:          
+        case IDRIVE_JOYSTICK_UP:
           BPMod->keyboardPressOnce(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
           break;
           //Hoch (lang)
-        case 0x12:          
+        case IDRIVE_JOYSTICK_UP_HOLD:
           break;
         //Rechts (kurz)
-        case 0x21:
+        case IDRIVE_JOYSTICK_RIGHT:
           BPMod->keyboardPressOnce(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
           break;
         //Rechts (lang)
-        case 0x22:
+        case IDRIVE_JOYSTICK_RIGHT_HOLD:
           break;
         //Runter (kurz)
-        case 0x41:
+        case IDRIVE_JOYSTICK_DOWN:
           BPMod->keyboardPressOnce(BP_KEY_DOWN_ARROW, BP_MOD_NOMOD);
           break;
         //Runter (lang)
-        case 0x42:
+        case IDRIVE_JOYSTICK_DOWN_HOLD:
           break;
         //Links (kurz)
-        case 0x81:
+        case IDRIVE_JOYSTICK_LEFT:
           BPMod->keyboardPressOnce(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
           break;
         //Links (lang)
-        case 0x82:
+        case IDRIVE_JOYSTICK_LEFT_HOLD:
           break;
         default:
           break;
@@ -1161,20 +1148,20 @@ void readConsole()
   if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
-    if(command == "pc.stop")
+    if (command == "pc.stop")
     {
       stopOdroid();
     }
-    if(command == "pc.start")
+    if (command == "pc.start")
     {
       startOdroid();
     }
-    if(command == "pc.pause")
+    if (command == "pc.pause")
     {
       pauseOdroid();
     }
-    if(command == "car.testcan")
-    {      
+    if (command == "car.testcan")
+    {
     }
   }
 }

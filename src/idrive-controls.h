@@ -31,11 +31,10 @@ const byte IDRIVE_JOYSTICK_RIGHT_HOLD = 0x22;
 const byte IDRIVE_JOYSTICK_DOWN = 0x41;
 //Joystick runter gehalten
 const byte IDRIVE_JOYSTICK_DOWN_HOLD = 0x42;
-//Joystick links 
+//Joystick links
 const byte IDRIVE_JOYSTICK_LEFT = 0x81;
 //Joystick links gehalten
 const byte IDRIVE_JOYSTICK_LEFT_HOLD = 0x82;
-
 
 //Adresse für Touch input
 const int IDRIVE_CTRL_TOUCH_ADDR = 0x0BF;

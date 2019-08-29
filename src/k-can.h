@@ -2,7 +2,6 @@
   Karosserie-Canbus Variablen und Settings
 */
 
-
 /*
   Konstanten / Settings
 */
@@ -31,14 +30,14 @@ const unsigned int mflButtonHoldTime = 1000;
   Variablen für MFL Knöpfe
 */
 //Debounce für MFL Knopfdruck
-unsigned long lastMflPress = 0; 
+unsigned long lastMflPress = 0;
 //Debounce Timestamp für MFL release
 unsigned long lastMflRelease = 0;
 //Ob der MFL Knopf "Next" gehalten wird
-bool MflButtonNextPressed = false; 
+bool MflButtonNextPressed = false;
 //Ob der MFL Knopf "Prev" gehalten wird
-bool MflButtonPrevPressed = false; 
-//MFL Button Counter 
+bool MflButtonPrevPressed = false;
+//MFL Button Counter
 int mflButtonCounter = 0;
 
 /*
@@ -107,17 +106,16 @@ unsigned long previousIdriveJoystickTimestamp = 0;
 //Zuletzt gedrückte Taste
 byte previousIdriveButton = 0x00;
 
-
 enum iDriveButtonPressType
 {
-    BUTTON_SHORT_PRESS,
-    BUTTON_LONG_PRESS,
-    BUTTON_RELEASE
+  BUTTON_SHORT_PRESS,
+  BUTTON_LONG_PRESS,
+  BUTTON_RELEASE
 };
 
 iDriveButtonPressType iDriveBtnPress = BUTTON_RELEASE;
 
-//Zuletzt empfangener Counter der iDrive Funktionsknöpfe. 
+//Zuletzt empfangener Counter der iDrive Funktionsknöpfe.
 //Wird immer erhöht, wenn eine neue Aktion ausgeführt wird.
 int previousIdriveButtonPressCounter = 0;
 
