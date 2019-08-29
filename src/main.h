@@ -126,3 +126,15 @@ char dateString[11] = "00.00.0000";
 
 //Initialstatus der eingebauten LED
 int ledState = LOW;
+
+//Displayhelligkeit
+
+//Geringster Helligkeitswert vom Lichtsensor (Dunkelheit / abgedeckt)
+const int MIN_LM_LIGHT_LEVEL = 17;
+//Höchster Helligkeitswert vom Lichtsensor (Direktes Sonnenlicht)
+const int MAX_LM_LIGHT_LEVEL = 80;
+//Minimaler Steuerwert für Displayhelligkeit
+const int MIN_DISPLAY_BRIGHTNESS = 50;
+//Maximaler Steuerwert für Displayhelligkeit
+const int MAX_DISPLAY_BRIGHTNESS = 255;
+

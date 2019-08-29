@@ -411,7 +411,7 @@ void checkCan()
       //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
-      val = map(lightValue, 0, 80, 50, 255);
+      val = map(lightValue, MIN_LM_LIGHT_LEVEL, MAX_LM_LIGHT_LEVEL, MIN_DISPLAY_BRIGHTNESS, MAX_DISPLAY_BRIGHTNESS);
       Serial.print("Licht (Roh, CTRL):\t");
       Serial.print(lightValue);
       Serial.print('\t');
