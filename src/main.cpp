@@ -547,7 +547,7 @@ void checkCan()
           }
           else
           {
-            BPMod->mouseWheel(-1);
+            BPMod->keyboardPressOnce(BP_KEY_UP_ARROW,BP_MOD_NOMOD);
           }
         }
         rotaryposition++;
@@ -565,7 +565,7 @@ void checkCan()
           }
           else
           {
-            BPMod->mouseWheel(1);
+            BPMod->keyboardPressOnce(BP_KEY_DOWN_ARROW,BP_MOD_NOMOD);
           }
         }
         rotaryposition--;
