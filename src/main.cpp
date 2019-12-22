@@ -408,6 +408,16 @@ void checkCan()
 
       int lightValue = buf[0];
 
+      //Lichtwert prüfen und bei Über- oder Unterschreitungen korrigieren.
+      if(lightValue > MAX_LM_LIGHT_LEVEL)
+      {
+        lightValue = MAX_LM_LIGHT_LEVEL;
+      }
+      if(lightValue < MIN_LM_LIGHT_LEVEL)
+      {
+        lightValue = MIN_LM_LIGHT_LEVEL;
+      }
+
       //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
@@ -999,6 +1009,12 @@ void checkIgnitionState()
   //Wenn der Status der Zündung sich verändert hat.
   if (ignitionOn != lastIgnitionState)
   {
+    //Zündung ist an aber PC ist aus.
+    if(ignitionOn == LOW && odroidRunning == LOW)
+    {
+      //PC starten.
+      startOdroid();
+    }
   }
   //Letzten Status merken.
   lastIgnitionState = ignitionOn;
@@ -1029,7 +1045,7 @@ void startOdroid()
 void pauseOdroid()
 {
   //Wenn der PC aus ist, dann brauchen wir auch nicht Pause drücken.... Wir gehen auch einfach mal davon aus, dass er aus ist.
-  //Wenn auch noch eine Stand-By Anforderung ausstehend ist, könnte ein erneutes Drücken den start wieder auslösen.
+  //Wenn auch noch eine Stand-By Anforderung ausstehend ist, könnte ein erneutes Drücken den Start wieder auslösen.
   if (odroidPauseRequested || !odroidRunning || pendingAction != NONE)
   {
     return;
