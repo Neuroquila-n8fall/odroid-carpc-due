@@ -26,7 +26,7 @@ W.I.P.
 ### Parameters
 W.I.P.
 
-###### Known Issues
+## Known Issues
 - As soon as the car battery is depleted, the arduino will write value 0 to the display brightness pin when the engine starts or doors are fully opened and closed. I have yet to understand why on earth this is happening even when the engine is already running. I can only think of a solution where the brightness is updated frequently, like 10 seconds or so.
 - When the car is not shut and goes into hibernation and the car pc is still running, it might happen that the display goes dark. This might also be related to the aforementioned problem and may point to an integer overflow issue on the brightness calculation. Maybe the sensor on the windshield (RLS Control Module) sends some crazy data when it goes into hibernation.
 
