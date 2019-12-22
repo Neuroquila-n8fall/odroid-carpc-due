@@ -8,6 +8,9 @@
 */
 #include <k-can.h>
 #include <main.h>
+#include <k-can-addresses.h>
+#include <k-can-messages.h>
+#include <idrive-controls.h>
 
 //CAN Modul initialisieren
 MCP_CAN CAN(SPI_CS_PIN);
@@ -224,7 +227,7 @@ void checkCan()
     switch (canId)
     {
     //MFL Knöpfe
-    case 0x1D6:
+    case MFL_BUTTON_ADDR:
     {
       //Kein Knopf gedrückt (alle 1000ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
@@ -304,7 +307,7 @@ void checkCan()
       break;
     }
     //CAS: Schlüssel & Zündung
-    case 0x130:
+    case CAS_ADDR:
     {
       //Wakeup Signal vom CAS --> Alle Steuergeräte aufwecken
       //Wird alle 100ms geschickt
@@ -322,7 +325,7 @@ void checkCan()
       break;
     }
     //CIC
-    case 0x273:
+    case CIC_ADDR:
     {
       Serial.print("CIC\t");
       printCanMsg(canId, buf, len);
@@ -392,8 +395,8 @@ void checkCan()
       }
       break;
     }
-
-    case 0x314:
+    //RLS Lichtsensorik
+    case RLS_ADDR:
     {
       //Pralle Sonne:
       //[314]   50      0       FF
@@ -401,14 +404,14 @@ void checkCan()
       //[314]   11      8       FF
 
       //unsigned int lightVal = (buf[1] << 8) + buf[0];
-      //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Vllt Regensensor?
+      //Licht ist definitiv auf byte 0 aber keine Ahnung ob byte 1 noch was zu sagen hat. Dieses byte wechselt jedenfalls nach 8, wenn dann auch das Abblendlicht angeht.
 
       int lightValue = buf[0];
 
       //Display auf volle Helligkeit einstellen. Das ist unser Basiswert
       int val = 255;
 
-      val = map(lightValue, 0, 80, 50, 255);
+      val = map(lightValue, MIN_LM_LIGHT_LEVEL, MAX_LM_LIGHT_LEVEL, MIN_DISPLAY_BRIGHTNESS, MAX_DISPLAY_BRIGHTNESS);
       Serial.print("Licht (Roh, CTRL):\t");
       Serial.print(lightValue);
       Serial.print('\t');
@@ -448,7 +451,7 @@ void checkCan()
       break;
     }
     //Licht-, Solar- und Innenraumtemperatursensoren
-    case 0x32E:
+    case IHKA_ADDR:
     {
       //Byte #0 ist der Solarsensor mittig auf dem Armaturenbrett
       /*  
@@ -460,7 +463,7 @@ void checkCan()
       break;
     }
     //Steuerung für Helligkeit der Armaturenbeleuchtung (Abblendlicht aktiv)
-    case 0x202:
+    case LM_DIM_ADDR:
     {
       //254 = AUS
       //Bereich: 0-253
@@ -471,7 +474,7 @@ void checkCan()
       break;
     }
     //Rückspiegel und dessen Lichtsensorik
-    case 0x286:
+    case SPIEGEL_ABBLEND_ADDR:
     {
       break;
     }
@@ -479,7 +482,7 @@ void checkCan()
     //iDrive Controller
 
     //iDrive Controller: Drehung
-    case 0x264:
+    case IDRIVE_CTRL_ROT_ADDR:
     {
       //Byte 2 beinhaltet den counter
       //Byte 3 Counter Geschwindigkeit der Drehrichtung:
@@ -544,7 +547,7 @@ void checkCan()
           }
           else
           {
-            BPMod->mouseWheel(-1);
+            BPMod->keyboardPressOnce(BP_KEY_DOWN_ARROW,BP_MOD_NOMOD);
           }
         }
         rotaryposition++;
@@ -562,7 +565,7 @@ void checkCan()
           }
           else
           {
-            BPMod->mouseWheel(1);
+            BPMod->keyboardPressOnce(BP_KEY_UP_ARROW,BP_MOD_NOMOD);
           }
         }
         rotaryposition--;
@@ -593,7 +596,7 @@ void checkCan()
     } //END ROTARY
 
       //Knöpfe und Joystick
-    case 0x267:
+    case IDRIVE_CTRL_BTN_ADDR:
     {
       //Dieser Wert erhöht sich, wenn eine Taste gedrückt wurde.
       int buttonCounter = buf[2];
@@ -657,36 +660,29 @@ void checkCan()
       if (inputType != IDRIVE_JOYSTICK)
       {
         printCanMsg(canId, buf, len);
-        //Zeitstempel
-        Serial.print(timeStamp + '\t');
-        Serial.print("[iDrive] Knopf ");
         //Knöpfe entsprechend nach Typ behandeln
         switch (buttonType)
         {
         //Joystick oder Menüknopf
         case IDRIVE_BUTTON_CENTER_MENU:
         {
-          Serial.print(" CENTER oder MENÜ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
           case BUTTON_SHORT_PRESS:
           {
-            Serial.print(" Kurz");
             BPMod->keyboardPress(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
           //Lang gedrückt
           case BUTTON_LONG_PRESS:
           {
-            Serial.print(" Lang");
             //BPMod->keyboardPress(BP_KEY_F11, BP_MOD_NOMOD);
             break;
           }
           //Losgelassen
           case BUTTON_RELEASE:
           {
-            Serial.print(" Release");
             BPMod->keyboardRelease(BP_KEY_ENTER, BP_MOD_NOMOD);
             break;
           }
@@ -696,7 +692,6 @@ void checkCan()
           //BACK Button
         case IDRIVE_BUTTON_BACK:
         {
-          Serial.println(" BACK ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -722,7 +717,6 @@ void checkCan()
           //OPTION Button
         case IDRIVE_BUTTON_OPTION:
         {
-          Serial.println(" OPTION ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -750,7 +744,6 @@ void checkCan()
           //RADIO Button
         case IDRIVE_BUTTON_RADIO:
         {
-          Serial.println(" RADIO ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -777,7 +770,6 @@ void checkCan()
           //CD Button
         case IDRIVE_BUTTON_CD:
         {
-          Serial.println(" CD ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -802,7 +794,6 @@ void checkCan()
           //NAV Button
         case IDRIVE_BUTTON_NAV:
         {
-          Serial.println(" NAV ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -827,7 +818,6 @@ void checkCan()
           //TEL Button
         case IDRIVE_BUTTON_TEL:
         {
-          Serial.println(" TEL ");
           switch (iDriveBtnPress)
           {
           //Kurz gedrückt
@@ -858,50 +848,45 @@ void checkCan()
       }
       else
       {
-        Serial.print(" Joystick");
         switch (buttonPressType)
         {
           //Hoch (kurz)
-        case 0x11:
-          Serial.print(" Hoch Kurz");
+        case IDRIVE_JOYSTICK_UP:
           BPMod->keyboardPressOnce(BP_KEY_UP_ARROW, BP_MOD_NOMOD);
           break;
           //Hoch (lang)
-        case 0x12:
-          Serial.print(" Hoch Lang");
+        case IDRIVE_JOYSTICK_UP_HOLD:
           break;
         //Rechts (kurz)
-        case 0x21:
+        case IDRIVE_JOYSTICK_RIGHT:
           BPMod->keyboardPressOnce(BP_KEY_RIGHT_ARROW, BP_MOD_NOMOD);
           break;
         //Rechts (lang)
-        case 0x22:
+        case IDRIVE_JOYSTICK_RIGHT_HOLD:
           break;
         //Runter (kurz)
-        case 0x41:
+        case IDRIVE_JOYSTICK_DOWN:
           BPMod->keyboardPressOnce(BP_KEY_DOWN_ARROW, BP_MOD_NOMOD);
           break;
         //Runter (lang)
-        case 0x42:
+        case IDRIVE_JOYSTICK_DOWN_HOLD:
           break;
         //Links (kurz)
-        case 0x81:
+        case IDRIVE_JOYSTICK_LEFT:
           BPMod->keyboardPressOnce(BP_KEY_LEFT_ARROW, BP_MOD_NOMOD);
           break;
         //Links (lang)
-        case 0x82:
+        case IDRIVE_JOYSTICK_LEFT_HOLD:
           break;
         default:
           break;
         } //END DIRECTION
       }
-      //Zeile beenden.
-      Serial.println();
       break;
     }
 
-    //PDC
-    case 0x1C2:
+    //PDC 1
+    case PDC_ABSTANDSMELDUNG_1_ADDR:
     {
       /*       //Byte 0~3 = Hinten
       //Byte 4~7 = Vorne
@@ -920,7 +905,7 @@ void checkCan()
       break;
     }
     //Rückwärtsgang
-    case 0x3B0:
+    case LM_REVERSESTATUS_ADDR:
     {
       if (buf[0] == 0xFD)
       {
@@ -933,7 +918,7 @@ void checkCan()
       break;
     }
     //Batteriespannung und Status
-    case 0x3B4:
+    case DMEDDE_POWERMGMT_BATTERY_ADDR:
     {
       //(((Byte[1]-240 )*256)+Byte[0])/68
       //float batteryVoltage = (((buf[1] - 240) * 256) + buf[0]) / 68;
@@ -953,7 +938,7 @@ void checkCan()
       break;
     }
     //Uhrzeit
-    case 0x2F8:
+    case KOMBI_DATETIME_ADDR:
     {
       //Merken, wann das letzte mal diese Nachricht empfangen wurde.
       previousCanDateTime = millis();
@@ -1085,9 +1070,9 @@ void stopOdroid()
 
 void buildtimeStamp()
 {
-  sprintf(timeStamp, "%02d:%02d:%02d %02d.%02d.%4d", hours, minutes, seconds, days, month, year);
+  sprintf(timeStamp, "[%02d:%02d:%02d %02d.%02d.%u]", hours, minutes, seconds, days, month, year);
   sprintf(timeString, "%02d:%02d:%02d", hours, minutes, seconds);
-  sprintf(dateString, "%02d.%02d.%4d", days, month, year);
+  sprintf(dateString, "%02d.%02d.%u]", days, month, year);
 }
 
 void printCanMsg(int canId, unsigned char *buffer, int len)
@@ -1163,5 +1148,20 @@ void readConsole()
   if (Serial.available() > 0)
   {
     String command = Serial.readStringUntil('\n');
+    if (command == "pc.stop")
+    {
+      stopOdroid();
+    }
+    if (command == "pc.start")
+    {
+      startOdroid();
+    }
+    if (command == "pc.pause")
+    {
+      pauseOdroid();
+    }
+    if (command == "car.testcan")
+    {
+    }
   }
 }
