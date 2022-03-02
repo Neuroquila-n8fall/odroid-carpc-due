@@ -57,6 +57,7 @@ void setup()
   }
   digitalWrite(LED_BUILTIN, HIGH);
   Serial.println("[setup] Ready.");
+
 }
 
 void loop()
@@ -229,6 +230,12 @@ void checkCan()
     //MFL Knöpfe
     case MFL_BUTTON_ADDR:
     {
+      //Skip if we don't want to handle MFL Buttons
+      if (disableMFLButtons)
+      {
+        return;
+      }
+      
       //Kein Knopf gedrückt (alle 1000ms)
       if (buf[0] == 0xC0 && buf[1] == 0x0C)
       {
@@ -969,6 +976,45 @@ void checkCan()
 
       buildtimeStamp();
 
+      break;
+    }
+    case JBE_KAROSSERIE_ADDR:
+    {
+
+      switch (buf[0])
+      {
+      case 0x80:
+        //Blinker AUS
+        break;
+      case 0x91:
+        //Blinker Links AN
+        break;
+      case 0xA1:
+        //Blinker Rechts AN
+        break;
+      case 0xB1:
+        //Warnblinker AN
+        break;
+      default:
+        break;
+      }
+    }
+    case JBE_KAROSSERIE_TUERSTATUS_ADDR:
+    {
+      /*
+      Byte 2 Trägt die Türinformationen:
+      01 01 01 01
+      FH BH  F  B
+      FH = Fahrer Hinten
+      BH = Beifahrer HInten
+      F = Fahrer
+      B = Beifahrer
+      */
+
+      //Status Fahrertür Senden
+      //bitRead(buf[2], 0);
+      //Status Beifahrertür senden
+      //bitRead(buf[2], 1);
       break;
     }
     default:

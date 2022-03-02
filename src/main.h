@@ -137,3 +137,5 @@ const int MAX_LM_LIGHT_LEVEL = 80;
 const int MIN_DISPLAY_BRIGHTNESS = 50;
 //Maximaler Steuerwert für Displayhelligkeit
 const int MAX_DISPLAY_BRIGHTNESS = 255;
+
+bool disableMFLButtons = true;

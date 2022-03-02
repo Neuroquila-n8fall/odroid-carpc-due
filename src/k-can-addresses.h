@@ -80,3 +80,8 @@ const int LM_REVERSESTATUS_ADDR = 0x3B0;
 //DME - DDE Powermanagement Batterspiespannung
 const int DMEDDE_POWERMGMT_BATTERY_ADDR = 0x3B4;
 
+//JBE -> KCAN: Blinker
+const int JBE_KAROSSERIE_ADDR = 0x1F6;
+
+//JBE Türstatus
+const int JBE_KAROSSERIE_TUERSTATUS_ADDR = 0x1E1;
